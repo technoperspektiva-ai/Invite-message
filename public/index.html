@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#f8e4e7" />
+  <title>Для Солодкої Дружини 💗</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;1,500&family=Montserrat:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <main class="page" aria-live="polite">
+    <div class="ambient ambient-a"></div>
+    <div class="ambient ambient-b"></div>
+    <div class="grain"></div>
+
+    <section class="hero">
+      <p class="eyebrow">маленьке запрошення на особливий вечір</p>
+      <h1>Для Солодкої Дружини</h1>
+      <p class="subtitle">Натисни на конверт, кохана ♡</p>
+
+      <div class="scene" id="scene">
+        <button class="envelope" id="envelope" type="button" aria-label="Відкрити запрошення" aria-expanded="false">
+          <span class="letter-wrap">
+            <img class="letter" src="./assets/invitation.png" alt="Запрошення KISSING, KITCHEN, ART" draggable="false" />
+          </span>
+          <span class="env-back"></span>
+          <span class="env-left"></span>
+          <span class="env-right"></span>
+          <span class="env-bottom"></span>
+          <span class="env-flap"></span>
+          <span class="seal" aria-hidden="true">♡</span>
+        </button>
+      </div>
+
+      <button class="open-btn" id="openBtn" type="button">Відкрити запрошення <span>→</span></button>
+      <p class="footer-note">КОХАННЯ У ДРІБНИЦЯХ · 19/09/26</p>
+    </section>
+
+    <div class="modal" id="modal" hidden>
+      <button class="close" id="closeBtn" aria-label="Закрити">×</button>
+      <div class="modal-card">
+        <img src="./assets/invitation.png" alt="Повне запрошення" />
+      </div>
+      <p class="modal-hint">Торкнись поза листівкою, щоб повернутись</p>
+    </div>
+  </main>
+  <script src="./app.js"></script>
+</body>
+</html>
