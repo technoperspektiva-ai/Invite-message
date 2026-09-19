@@ -64,7 +64,7 @@ h1 {
   border: 0;
   padding: 0;
   width: min(86vw, 570px);
-  aspect-ratio: 1.58 / 1;
+  aspect-ratio: 1.62 / 1;
   position: relative;
   background: transparent;
   cursor: pointer;
@@ -81,6 +81,7 @@ h1 {
   background: linear-gradient(165deg,#f6b8c1,#e98798 68%,#d96f82);
   border-radius: 22px 22px 28px 28px;
   box-shadow: inset 0 1px 0 rgba(255,255,255,.5);
+  z-index: 2;
 }
 .env-left {
   inset: 12% 50% 0 0;
@@ -130,11 +131,17 @@ h1 {
 }
 .letter-wrap {
   position: absolute;
-  z-index: 3;
-  left: 50%; bottom: 8%;
-  width: 56%;
-  transform: translateX(-50%) translateY(8%);
-  transition: transform 1s cubic-bezier(.15,.8,.2,1), z-index 0s .62s;
+  z-index: 1;
+  left: 50%;
+  bottom: 3%;
+  width: 54%;
+  opacity: 0;
+  transform: translateX(-50%) translateY(42%);
+  transition:
+    transform .95s cubic-bezier(.15,.8,.2,1),
+    opacity .16s ease .30s,
+    z-index 0s .38s;
+  pointer-events: none;
 }
 .letter {
   width: 100%; display: block;
@@ -150,9 +157,12 @@ h1 {
 .envelope.open .seal { opacity: 0; transform: translate(-50%,-50%) scale(.55); }
 .envelope.open .letter-wrap {
   z-index: 6;
-  transform: translateX(-50%) translateY(-46%);
+  opacity: 1;
+  transform: translateX(-50%) translateY(-42%);
 }
-.envelope.open.complete .letter-wrap { transform: translateX(-50%) translateY(-58%) scale(1.04); }
+.envelope.open.complete .letter-wrap {
+  transform: translateX(-50%) translateY(-56%) scale(1.03);
+}
 .open-btn {
   border: 0;
   border-radius: 999px;
@@ -192,7 +202,7 @@ h1 {
   .subtitle { margin-bottom: 2px; }
   .scene { height: min(52svh, 430px); margin-top: -8px; }
   .envelope { width: 92vw; }
-  .letter-wrap { width: 58%; }
+  .letter-wrap { width: 55%; }
   .open-btn { margin-top: -6px; }
 }
 @media (prefers-reduced-motion: reduce) {
