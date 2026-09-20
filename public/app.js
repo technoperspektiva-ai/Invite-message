@@ -1,119 +1,107 @@
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
+const photoInput = $('#photoInput');
+const photoThumb = $('#photoThumb');
+const previewPhoto = $('#previewPhoto');
+const previewDialog = $('#previewDialog');
+const previewBtn = $('#previewBtn');
+const shareBtn = $('#shareBtn');
+const shareInside = $('#shareInside');
+let recipient = 'Дружина';
+let imageDataUrl = '';
 
-const creatorView = $("#creatorView");
-const inviteView = $("#inviteView");
-const form = $("#inviteForm");
-const statusEl = $("#formStatus");
-const shareDialog = $("#shareDialog");
-const shareUrl = $("#shareUrl");
-const nativeShareBtn = $("#nativeShareBtn");
-const openInviteLink = $("#openInviteLink");
-let createdUrl = "";
-let photoObjectUrl = "";
-
-const recipientLabels = {
-  "Дружина":"Дружини","Кохана":"Коханої","Подруга":"Подруги",
-  "Чоловік":"Чоловіка","Коханий":"Коханого","Друг":"Друга"
+const copy = {
+  'Дружина': ['Для дружини', 'Ти особлива. Я хочу розділити цей момент з тобою.'],
+  'Кохана': ['Для коханої', 'Ти особлива. Я хочу розділити цей момент з тобою.'],
+  'Подруга': ['Для подруги', 'Ти особлива. Нехай цей момент залишиться нашою маленькою історією.'],
+  'Чоловік': ['Для чоловіка', 'Ти особливий. Я хочу розділити цей момент з тобою.'],
+  'Коханий': ['Для коханого', 'Ти особливий. Я хочу розділити цей момент з тобою.'],
+  'Друг': ['Для друга', 'Ти особливий. Нехай цей момент залишиться нашою маленькою історією.'],
 };
 
-function updatePreview(){
-  const type = $("#recipientType").value;
-  $("#previewFor").textContent = recipientLabels[type] || type;
-  $("#previewHeadline").textContent = $("#headlineInput").value || "Ти особлива";
-  $("#previewCopy").textContent = $("#noteInput").value || "Я хочу розділити цей момент з тобою.";
-  $("#previewDate").textContent = $("#dateInput").value || "—";
-  $("#previewTime").textContent = $("#timeInput").value || "—";
-  $("#previewLocation").textContent = $("#locationInput").value || "—";
+function updateText(){
+  const [title, text] = copy[recipient] || copy['Кохана'];
+  $('#previewTitle').textContent = title;
+  $('#previewText').textContent = text;
 }
 
-$$('[data-value]').forEach(btn=>btn.addEventListener('click',()=>{
-  $$('[data-value]').forEach(x=>x.classList.remove('active'));
+$$('[data-value]').forEach(btn => btn.addEventListener('click', () => {
+  $$('[data-value]').forEach(x => x.classList.remove('active'));
   btn.classList.add('active');
-  $("#recipientType").value = btn.dataset.value;
-  const isMale = ["Чоловік","Коханий","Друг"].includes(btn.dataset.value);
-  if (!$("#headlineInput").dataset.edited) $("#headlineInput").value = isMale ? "Ти особливий" : "Ти особлива";
-  updatePreview();
+  recipient = btn.dataset.value;
+  updateText();
 }));
 
-["#recipientName","#dateInput","#timeInput","#locationInput","#dressInput","#headlineInput","#noteInput"].forEach(id=>{
-  $(id).addEventListener('input',e=>{if(id==="#headlineInput") e.target.dataset.edited="1"; updatePreview();});
+photoInput.addEventListener('change', async (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  if (!['image/jpeg','image/png','image/webp','image/avif'].includes(file.type)) return toast('Оберіть JPG, PNG, WEBP або AVIF');
+  if (file.size > 12 * 1024 * 1024) return toast('Фото завелике — максимум 12 МБ');
+  imageDataUrl = await readFile(file);
+  photoThumb.src = imageDataUrl; photoThumb.hidden = false;
+  previewPhoto.src = imageDataUrl;
+  previewBtn.disabled = false; shareBtn.disabled = false;
 });
 
-$("#photoInput").addEventListener('change',e=>{
-  const file=e.target.files?.[0]; if(!file) return;
-  if(photoObjectUrl) URL.revokeObjectURL(photoObjectUrl);
-  photoObjectUrl=URL.createObjectURL(file);
-  [$("#photoThumb"),$("#previewPhoto")].forEach(img=>{img.src=photoObjectUrl;img.hidden=false;});
-  $("#photoPlaceholder").hidden=true;
-});
+function readFile(file){
+  return new Promise((resolve,reject)=>{
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
 
-form.addEventListener('submit',async e=>{
-  e.preventDefault();
-  const btn=$("#createBtn");
-  btn.disabled=true; statusEl.textContent="Створюю персональне посилання…";
+function openPreview(){
+  if (!imageDataUrl) return;
+  updateText();
+  if (!previewDialog.open) previewDialog.showModal();
+}
+function closePreview(){ if(previewDialog.open) previewDialog.close(); }
+previewBtn.addEventListener('click', openPreview);
+$('#previewClose').addEventListener('click', closePreview);
+previewDialog.addEventListener('click', e => { if(e.target === previewDialog) closePreview(); });
+previewDialog.addEventListener('cancel', e => { e.preventDefault(); closePreview(); });
+
+async function renderInviteBlob(){
+  const canvas = $('#exportCanvas');
+  const ctx = canvas.getContext('2d');
+  const W=canvas.width,H=canvas.height;
+  const g=ctx.createLinearGradient(0,0,W,H); g.addColorStop(0,'#f8f5ff'); g.addColorStop(.55,'#eee9fa'); g.addColorStop(1,'#e2daf3');
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  const rg=ctx.createRadialGradient(180,180,0,180,180,480); rg.addColorStop(0,'rgba(255,255,255,.75)'); rg.addColorStop(1,'rgba(255,255,255,0)');ctx.fillStyle=rg;ctx.fillRect(0,0,W,H);
+  ctx.textAlign='center';
+  ctx.fillStyle='#776d8d'; ctx.font='600 24px Montserrat, sans-serif'; ctx.fillText('ОСОБЛИВЕ ЗАПРОШЕННЯ',W/2,100);
+  const [title,text]=copy[recipient]||copy['Кохана'];
+  ctx.fillStyle='#443a5c';ctx.font='600 78px Georgia, serif';ctx.fillText(title,W/2,205);
+  const img=await loadImage(imageDataUrl);
+  const box={x:270,y:300,w:540,h:540,r:54};
+  roundRect(ctx,box.x,box.y,box.w,box.h,box.r);ctx.fillStyle='#f7f3ff';ctx.fill();ctx.save();roundRect(ctx,box.x+18,box.y+18,box.w-36,box.h-36,40);ctx.clip();drawCover(ctx,img,box.x+18,box.y+18,box.w-36,box.h-36);ctx.restore();
+  ctx.beginPath();ctx.arc(W/2,850,54,0,Math.PI*2);ctx.fillStyle='#77659e';ctx.fill();ctx.fillStyle='#fff';ctx.font='42px Georgia';ctx.fillText('♡',W/2,865);
+  ctx.fillStyle='#443a5c';ctx.font='italic 42px Georgia, serif';wrapText(ctx,text,W/2,955,760,56);
+  ctx.fillStyle='#8b809d';ctx.font='600 18px Montserrat, sans-serif';ctx.fillText('МАЛЕНЬКЕ ЗАПРОШЕННЯ ДО ВЕЛИКОЇ ІСТОРІЇ',W/2,1240);
+  return new Promise(resolve=>canvas.toBlob(resolve,'image/png',0.95));
+}
+
+function loadImage(src){return new Promise((resolve,reject)=>{const i=new Image();i.onload=()=>resolve(i);i.onerror=reject;i.src=src;});}
+function roundRect(ctx,x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r);}
+function drawCover(ctx,img,x,y,w,h){const s=Math.max(w/img.width,h/img.height);const dw=img.width*s,dh=img.height*s;ctx.drawImage(img,x+(w-dw)/2,y+(h-dh)/2,dw,dh);}
+function wrapText(ctx,text,x,y,maxWidth,lineHeight){const words=text.split(' ');let line='',lines=[];for(const word of words){const test=line?line+' '+word:word;if(ctx.measureText(test).width>maxWidth&&line){lines.push(line);line=word}else line=test}lines.push(line);lines.forEach((l,i)=>ctx.fillText(l,x,y+i*lineHeight));}
+
+async function shareInvite(){
+  if(!imageDataUrl) return;
   try{
-    const body=new FormData(form);
-    const res=await fetch('/api/invitations',{method:'POST',body});
-    const data=await res.json();
-    if(!res.ok) throw new Error(data.error||'Помилка створення');
-    createdUrl=data.url;
-    shareUrl.value=createdUrl;
-    openInviteLink.href=createdUrl;
-    shareDialog.showModal();
-    statusEl.textContent="Готово — запрошення можна надсилати.";
-  }catch(err){statusEl.textContent=err.message;}finally{btn.disabled=false;}
-});
-
-$("#dialogClose").addEventListener('click',()=>shareDialog.close());
-$("#copyBtn").addEventListener('click',async()=>{
-  await navigator.clipboard.writeText(shareUrl.value);
-  $("#copyBtn").textContent="Скопійовано";
-  setTimeout(()=>$("#copyBtn").textContent="Копіювати",1300);
-});
-
-async function shareCurrent(){
-  const url=createdUrl||location.href;
-  const title="Для тебе — маленьке запрошення ♡";
-  if(navigator.share){
-    try{await navigator.share({title,text:"Я підготував(ла) для тебе маленьке запрошення ♡",url});}catch(e){if(e.name!=="AbortError") console.warn(e);}
-  }else{
-    await navigator.clipboard.writeText(url);
-    alert("Посилання скопійовано");
-  }
+    const blob=await renderInviteBlob();
+    const file=new File([blob],'zaprosennia.png',{type:'image/png'});
+    if(navigator.share && (!navigator.canShare || navigator.canShare({files:[file]}))){
+      await navigator.share({title:'Запрошення для тебе ♡',text:'Маленьке запрошення для особливої людини',files:[file]});
+      return;
+    }
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='zaprosennia.png';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);toast('Запрошення збережено як PNG');
+  }catch(err){if(err?.name!=='AbortError'){console.error(err);toast('Не вдалося підготувати запрошення');}}
 }
-nativeShareBtn.addEventListener('click',shareCurrent);
-$("#shareInviteBtn").addEventListener('click',shareCurrent);
+shareBtn.addEventListener('click',shareInvite);
+shareInside.addEventListener('click',shareInvite);
 
-const publicEnvelope=$("#publicEnvelope");
-const publicOpen=$("#publicOpen");
-let opened=false;
-function openPublic(){
-  if(opened) return;
-  opened=true; publicEnvelope.classList.add('open'); publicEnvelope.setAttribute('aria-expanded','true');
-  publicOpen.querySelector('span').textContent='Запрошення відкрите';
-  setTimeout(()=>publicEnvelope.classList.add('complete'),780);
-}
-publicEnvelope.addEventListener('click',openPublic); publicOpen.addEventListener('click',openPublic);
-
-async function loadPublicInvite(id){
-  creatorView.hidden=true; inviteView.hidden=false;
-  try{
-    const res=await fetch(`/api/invitations/${encodeURIComponent(id)}`);
-    const data=await res.json();
-    if(!res.ok) throw new Error(data.error||'Запрошення не знайдено');
-    const who=data.recipientName ? `${data.recipientType} ${data.recipientName}` : data.recipientType;
-    $("#publicTitle").textContent=`Для ${who}`;
-    $("#publicHeadline").textContent=data.headline||"Для тебе";
-    $("#publicNote").textContent=data.note||"";
-    $("#publicDate").textContent=data.date||"—";
-    $("#publicTime").textContent=data.time||"—";
-    $("#publicLocation").textContent=data.location||"—";
-    $("#publicDress").textContent=data.dressCode||"—";
-    if(data.photoUrl){$("#publicPhoto").src=data.photoUrl;$("#publicPhoto").hidden=false;$("#publicPhotoPlaceholder").hidden=true;}
-    createdUrl=location.href;
-  }catch(err){$("#publicTitle").textContent=err.message;publicEnvelope.disabled=true;publicOpen.disabled=true;}
-}
-
-const match=location.pathname.match(/^\/i\/([^/]+)/);
-if(match) loadPublicInvite(match[1]); else updatePreview();
+function toast(message){const el=document.createElement('div');el.className='toast';el.textContent=message;document.body.appendChild(el);setTimeout(()=>el.remove(),2200);}
+updateText();

@@ -3,105 +3,67 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <meta name="theme-color" content="#ece9fb" />
-  <title>Invite Message — створити запрошення</title>
+  <meta name="theme-color" content="#efecfb" />
+  <title>Invite Message</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Montserrat:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-  <div class="build-badge" aria-label="Версія сайту">Invite Message · v2 · 20.09.26</div>
   <div class="aurora a1"></div><div class="aurora a2"></div><div class="grain"></div>
-
-  <main class="shell" id="creatorView">
+  <main class="shell">
     <header class="intro">
-      <p class="eyebrow">СТВОРЕННЯ ПЕРСОНАЛЬНИХ ЗАПРОШЕНЬ</p>
-      <h1>Створи особисте запрошення<br>і надішли одним посиланням</h1>
-      <p class="lead">Додай своє фото, обери звертання, налаштуй подію та отримай окреме посилання для відправлення.</p>
+      <p class="eyebrow">ОСОБЛИВІ ЗАПРОШЕННЯ ДЛЯ ВАЖЛИВИХ ЛЮДЕЙ</p>
+      <h1>Запрошення<br>для коханої людини</h1>
+      <p class="lead">Додай фото — решту ми вже оформили ♡</p>
     </header>
 
-    <section class="studio">
-      <form class="editor glass" id="inviteForm">
-        <div class="field wide">
-          <span class="label">Для кого</span>
-          <div class="chips" id="recipientChips">
-            <button type="button" class="chip active" data-value="Дружина">Дружина</button>
-            <button type="button" class="chip" data-value="Кохана">Кохана</button>
-            <button type="button" class="chip" data-value="Подруга">Подруга</button>
-            <button type="button" class="chip" data-value="Чоловік">Чоловік</button>
-            <button type="button" class="chip" data-value="Коханий">Коханий</button>
-            <button type="button" class="chip" data-value="Друг">Друг</button>
-          </div>
-          <input type="hidden" name="recipientType" id="recipientType" value="Дружина" />
-        </div>
-
-        <label class="photo-drop" for="photoInput">
-          <input id="photoInput" name="photo" type="file" accept="image/jpeg,image/png,image/webp,image/avif" hidden />
-          <span class="photo-icon">⌁</span>
-          <span><strong>Додати своє фото</strong><small>JPG, PNG, WEBP або AVIF · до 5 МБ</small></span>
-          <img id="photoThumb" alt="Попередній перегляд фото" hidden />
-        </label>
-
-        <div class="field"><label>Ім’я</label><input name="recipientName" id="recipientName" placeholder="Наприклад, Аня" maxlength="80" /></div>
-        <div class="field"><label>Дата</label><input name="date" id="dateInput" value="19/09/26" maxlength="40" /></div>
-        <div class="field"><label>Час</label><input name="time" id="timeInput" value="21:10 - 23:00" maxlength="40" /></div>
-        <div class="field"><label>Місце</label><input name="location" id="locationInput" value="Дім" maxlength="120" /></div>
-        <div class="field"><label>Дрес-код</label><input name="dressCode" id="dressInput" value="Посмішка" maxlength="120" /></div>
-        <div class="field wide"><label>Заголовок</label><input name="headline" id="headlineInput" value="Ти особлива" maxlength="120" /></div>
-        <div class="field wide"><label>Текст</label><textarea name="note" id="noteInput" rows="3" maxlength="500">Я хочу розділити цей момент з тобою.</textarea></div>
-        <input type="hidden" name="subtitle" value="Маленьке запрошення на особливий вечір" />
-
-        <button class="primary" id="createBtn" type="submit"><span>Створити запрошення</span><b>→</b></button>
-        <p class="form-status" id="formStatus" role="status"></p>
-      </form>
-
-      <section class="preview-wrap" aria-label="Попередній перегляд">
-        <p class="preview-label">ПЕРЕДПЕРЕГЛЯД</p>
-        <div class="preview-stage">
-          <div class="invite-card" id="previewCard">
-            <div class="photo-frame"><div class="photo-placeholder" id="photoPlaceholder">♡</div><img id="previewPhoto" alt="" hidden /></div>
-            <span class="mini-heart">♥</span>
-            <h2 id="previewHeadline">Ти особлива</h2>
-            <p class="preview-copy" id="previewCopy">Я хочу розділити цей момент з тобою.</p>
-            <div class="preview-meta">
-              <span><small>ДЛЯ</small><b id="previewFor">Дружини</b></span>
-              <span><small>ДАТА</small><b id="previewDate">19/09/26</b></span>
-              <span><small>ЧАС</small><b id="previewTime">21:10 - 23:00</b></span>
-              <span><small>МІСЦЕ</small><b id="previewLocation">Дім</b></span>
-            </div>
-          </div>
-          <div class="envelope-demo"><div class="env-back"></div><div class="env-card-slot"></div><div class="env-left"></div><div class="env-right"></div><div class="env-bottom"></div><div class="seal">♡</div></div>
-        </div>
-        <p class="micro">Більше ніж запрошення · маленька історія для двох</p>
-      </section>
-    </section>
-  </main>
-
-  <main class="shell invite-page" id="inviteView" hidden>
-    <section class="invite-hero">
-      <p class="eyebrow">МАЛЕНЬКЕ ЗАПРОШЕННЯ НА ОСОБЛИВИЙ ВЕЧІР</p>
-      <h1 id="publicTitle">Для коханої людини</h1>
-      <p class="lead">Натисни на конверт ♡</p>
-      <div class="scene">
-        <button class="envelope" id="publicEnvelope" aria-label="Відкрити запрошення" aria-expanded="false">
-          <span class="letter-wrap"><article class="public-letter" id="publicLetter"><div class="photo-frame"><div class="photo-placeholder" id="publicPhotoPlaceholder">♡</div><img id="publicPhoto" alt="" hidden /></div><span class="mini-heart">♥</span><h2 id="publicHeadline">Ти особлива</h2><p id="publicNote">Я хочу розділити цей момент з тобою.</p><div class="public-details"><span><small>ДАТА</small><b id="publicDate"></b></span><span><small>ЧАС</small><b id="publicTime"></b></span><span><small>МІСЦЕ</small><b id="publicLocation"></b></span><span><small>ДРЕС-КОД</small><b id="publicDress"></b></span></div></article></span>
-          <span class="env-back"></span><span class="env-left"></span><span class="env-right"></span><span class="env-bottom"></span><span class="env-flap"></span><span class="seal">♡</span>
-        </button>
+    <section class="creator glass">
+      <div class="chips" id="recipientChips" aria-label="Оберіть звертання">
+        <button type="button" class="chip active" data-value="Дружина">Дружина</button>
+        <button type="button" class="chip" data-value="Кохана">Кохана</button>
+        <button type="button" class="chip" data-value="Подруга">Подруга</button>
+        <button type="button" class="chip" data-value="Чоловік">Чоловік</button>
+        <button type="button" class="chip" data-value="Коханий">Коханий</button>
+        <button type="button" class="chip" data-value="Друг">Друг</button>
       </div>
-      <button class="primary public-open" id="publicOpen"><span>Відкрити запрошення</span><b>→</b></button>
-      <button class="share-secondary" id="shareInviteBtn" type="button">Поділитися запрошенням</button>
+
+      <label class="photo-drop" for="photoInput">
+        <input id="photoInput" type="file" accept="image/jpeg,image/png,image/webp,image/avif" hidden />
+        <span class="photo-icon">▧</span>
+        <span class="photo-copy"><strong>Додати своє фото</strong><small>Фото обробляється тільки у твоєму браузері</small></span>
+        <img id="photoThumb" alt="Обране фото" hidden />
+      </label>
+
+      <div class="actions">
+        <button class="secondary" id="previewBtn" type="button" disabled>Передперегляд</button>
+        <button class="primary" id="shareBtn" type="button" disabled><span>Надіслати запрошення</span><b>↗</b></button>
+      </div>
+      <p class="privacy">Без акаунта · без R2 · без збереження фото на сервері</p>
     </section>
   </main>
 
-  <dialog id="shareDialog" class="share-dialog">
-    <button class="dialog-close" id="dialogClose" aria-label="Закрити">×</button>
-    <p class="eyebrow">ГОТОВО</p><h2>Запрошення створено</h2><p>Надішли це посилання в Telegram, Viber, iMessage або будь-який месенджер.</p>
-    <div class="share-link"><input id="shareUrl" readonly /><button id="copyBtn">Копіювати</button></div>
-    <button class="primary" id="nativeShareBtn"><span>Надіслати запрошення</span><b>↗</b></button>
-    <a class="open-link" id="openInviteLink" target="_blank" rel="noopener">Відкрити як отримувач</a>
+  <dialog id="previewDialog" class="preview-dialog">
+    <button class="dialog-close" id="previewClose" type="button" aria-label="Закрити">×</button>
+    <div class="preview-head">
+      <p class="eyebrow">ПЕРЕДПЕРЕГЛЯД</p>
+      <span>Так виглядатиме запрошення</span>
+    </div>
+    <div class="scene">
+      <div class="letter" id="letterPreview">
+        <div class="photo-frame"><img id="previewPhoto" alt="Фото на запрошенні" /></div>
+        <span class="mini-heart">♥</span>
+        <h2 id="previewTitle">Для дружини</h2>
+        <p id="previewText">Ти особлива. Я хочу розділити цей момент з тобою.</p>
+        <small>МАЛЕНЬКЕ ЗАПРОШЕННЯ ДО ВЕЛИКОЇ ІСТОРІЇ</small>
+      </div>
+      <div class="envelope"><div class="env-back"></div><div class="env-left"></div><div class="env-right"></div><div class="env-bottom"></div><div class="seal">♡</div></div>
+    </div>
+    <button class="primary share-inside" id="shareInside" type="button"><span>Надіслати це запрошення</span><b>↗</b></button>
   </dialog>
 
+  <canvas id="exportCanvas" width="1080" height="1350" hidden></canvas>
   <script src="/app.js"></script>
 </body>
 </html>

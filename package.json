@@ -1,13 +1,11 @@
 {
   "name": "invite-message",
   "private": true,
-  "version": "1.1.0",
+  "version": "3.0.0",
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "setup": "wrangler r2 bucket create love-invite-media || true",
-    "deploy": "wrangler r2 bucket create love-invite-media || true && wrangler deploy",
-    "deploy:plain": "wrangler deploy"
+    "deploy": "wrangler deploy"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"
