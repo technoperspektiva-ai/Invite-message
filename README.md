@@ -1,32 +1,28 @@
-# Invite Message
+# Invite Message v2 — Cloudflare Worker + R2
 
-Cloudflare Worker + Static Assets + R2. Запрошення та фото зберігаються в R2, тому D1/database_id не потрібні.
+Це оновлена версія сервісу створення та надсилання персональних запрошень.
 
-## Cloudflare
+## ВАЖЛИВО: Deploy command у Cloudflare НЕ міняй
 
-Worker name: `invite-message`
-R2 binding: `MEDIA`
-R2 bucket: `love-invite-media`
-
-Якщо bucket вже створений у Cloudflare, connected build з командою `npx wrangler deploy` має пройти без ручної підстановки `database_id`.
-
-Якщо bucket ще не існує, створіть його один раз:
+Залиш саме:
 
 ```bash
-npx wrangler r2 bucket create love-invite-media
+npx wrangler r2 bucket create love-invite-media || true && npx wrangler deploy
 ```
 
-Після цього:
+Команда створить R2 bucket при першому деплої, а якщо він уже існує — продовжить деплой.
 
-```bash
-npm install
-npx wrangler deploy
-```
+## Що виправлено у v2
 
-## Що виправлено
+- Worker називається `invite-message`.
+- Головна сторінка точно замінена на новий редактор запрошень.
+- На сторінці є видимий бейдж `Invite Message · v2 · 20.09.26`, щоб одразу бачити новий деплой.
+- `/api/*`, `/i/*`, `/media/*` завжди запускають Worker першими.
+- Статичні assets беруться з `public/`.
+- Дані запрошень та фото зберігаються у R2 `love-invite-media`.
 
-- назва Worker приведена до `invite-message`, як очікує Cloudflare CI;
-- D1 binding і placeholder `REPLACE_WITH_D1_DATABASE_ID` прибрані;
-- дані запрошень тепер зберігаються як JSON у R2;
-- фото як і раніше зберігаються в R2;
-- публічні URL `/i/<id>` та Share API залишилися без змін.
+## Після оновлення GitHub
+
+Замініть файли репозиторію файлами з цього архіву та зробіть commit/push. Cloudflare Builds повинен запуститися автоматично.
+
+Після успішного деплою відкрий кореневий URL Worker. Якщо бачиш бейдж `Invite Message · v2 · 20.09.26`, завантажилась нова версія.
