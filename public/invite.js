@@ -9,7 +9,6 @@ const titles = {
 };
 let opened = false;
 let modalTimer;
-let imageData = '';
 
 async function init() {
   const id = location.pathname.split('/').filter(Boolean).pop();
@@ -19,14 +18,12 @@ async function init() {
     const data = await res.json();
     $('#heroTitle').textContent = titles[data.recipient] || titles['Кохана'];
 
-    imageData = String(data.image || '');
-    if (!imageData.startsWith('data:image/')) {
-      imageData = await fetchPhotoFallback(`/api/invitations/${encodeURIComponent(id)}/photo?t=${Date.now()}`);
-    }
+    const photoUrl = data.photoUrl || `/api/invitations/${encodeURIComponent(id)}/photo`;
+    const src = `${photoUrl}${photoUrl.includes('?') ? '&' : '?'}v=${encodeURIComponent(data.updatedAt || Date.now())}`;
 
     await Promise.all([
-      setImage('#letterPhoto', imageData),
-      setImage('#fullPhoto', imageData)
+      setImage('#letterPhoto', src),
+      setImage('#fullPhoto', src)
     ]);
 
     $('#loading').hidden = true;
@@ -38,36 +35,12 @@ async function init() {
   }
 }
 
-async function fetchPhotoFallback(url) {
-  const res = await fetch(url, { cache: 'no-store' });
-  if (!res.ok) throw new Error('photo not found');
-  const blob = await res.blob();
-  if (!blob.type.startsWith('image/')) throw new Error('invalid photo');
-  return await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = reject;
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.readAsDataURL(blob);
-  });
-}
-
 function setImage(selector, src) {
   return new Promise((resolve, reject) => {
     const img = $(selector);
-    let settled = false;
-    const done = () => {
-      if (settled) return;
-      settled = true;
-      img.classList.add('is-loaded');
-      resolve();
-    };
-    const fail = (e) => {
-      if (settled) return;
-      settled = true;
-      reject(e || new Error('image load failed'));
-    };
+    const done = () => { img.classList.add('is-loaded'); resolve(); };
     img.onload = done;
-    img.onerror = fail;
+    img.onerror = () => reject(new Error('photo load failed'));
     img.decoding = 'async';
     img.src = src;
     if (img.complete && img.naturalWidth > 0) done();

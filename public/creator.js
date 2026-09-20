@@ -1,7 +1,8 @@
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
 let recipient = 'Дружина';
-let imageData = '';
+let selectedFile = null;
+let previewUrl = '';
 
 $$('[data-value]').forEach(btn => btn.addEventListener('click', () => {
   $$('[data-value]').forEach(x => x.classList.remove('active'));
@@ -12,80 +13,26 @@ $$('[data-value]').forEach(btn => btn.addEventListener('click', () => {
 $('#photoInput').addEventListener('change', async (event) => {
   const file = event.target.files?.[0];
   if (!file) return;
-  if (!file.type.startsWith('image/')) return toast('Оберіть зображення');
+  if (file.size > 10 * 1024 * 1024) return toast('Фото має бути до 10 МБ');
 
-  setBusyPhoto(true);
-  try {
-    imageData = await compressImage(file);
-    const thumb = $('#photoThumb');
-    thumb.src = imageData;
-    thumb.hidden = false;
-    $('#previewPhoto').src = imageData;
-    $('.photo-drop').classList.add('has-photo');
-    $('#previewBtn').disabled = false;
-    $('#createBtn').disabled = false;
-  } catch (e) {
-    console.error(e);
-    toast('Не вдалося обробити фото');
-  } finally {
-    setBusyPhoto(false);
-  }
+  selectedFile = file;
+  if (previewUrl) URL.revokeObjectURL(previewUrl);
+  previewUrl = URL.createObjectURL(file);
+
+  const thumb = $('#photoThumb');
+  thumb.src = previewUrl;
+  thumb.hidden = false;
+  $('#previewPhoto').src = previewUrl;
+  $('.photo-drop').classList.add('has-photo');
+  $('#previewBtn').disabled = false;
+  $('#createBtn').disabled = false;
 });
-
-function setBusyPhoto(state) {
-  $('.photo-drop').classList.toggle('is-busy', state);
-}
-
-function estimatedBytes(dataUrl) {
-  const comma = dataUrl.indexOf(',');
-  return Math.ceil((dataUrl.length - comma - 1) * 0.75);
-}
-
-function compressImage(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = reject;
-    reader.onload = () => {
-      const img = new Image();
-      img.onerror = reject;
-      img.onload = () => {
-        try {
-          let maxSide = 720;
-          let scale = Math.min(1, maxSide / Math.max(img.naturalWidth || img.width, img.naturalHeight || img.height));
-          let w = Math.max(1, Math.round((img.naturalWidth || img.width) * scale));
-          let h = Math.max(1, Math.round((img.naturalHeight || img.height) * scale));
-          let quality = 0.82;
-          let result = '';
-
-          for (let pass = 0; pass < 8; pass++) {
-            const canvas = document.createElement('canvas');
-            canvas.width = w;
-            canvas.height = h;
-            const ctx = canvas.getContext('2d', { alpha: false });
-            ctx.fillStyle = '#fff';
-            ctx.fillRect(0, 0, w, h);
-            ctx.drawImage(img, 0, 0, w, h);
-            result = canvas.toDataURL('image/jpeg', quality);
-            if (estimatedBytes(result) <= 420_000) break;
-            if (quality > 0.58) quality -= 0.08;
-            else { w = Math.max(320, Math.round(w * 0.86)); h = Math.max(320, Math.round(h * 0.86)); }
-          }
-
-          if (!result || estimatedBytes(result) > 470_000) throw new Error('image too large');
-          resolve(result);
-        } catch (error) { reject(error); }
-      };
-      img.src = reader.result;
-    };
-    reader.readAsDataURL(file);
-  });
-}
 
 function openDialog(dialog) { if (!dialog.open) dialog.showModal(); }
 function closeDialog(dialog) { if (dialog.open) dialog.close(); }
 
 $('#previewBtn').addEventListener('click', () => {
-  if (!imageData) return;
+  if (!selectedFile) return;
   openDialog($('#previewDialog'));
 });
 $('#previewClose').addEventListener('click', () => closeDialog($('#previewDialog')));
@@ -101,16 +48,16 @@ document.addEventListener('keydown', e => {
 });
 
 $('#createBtn').addEventListener('click', async () => {
-  if (!imageData) return;
+  if (!selectedFile) return;
   const btn = $('#createBtn');
   btn.disabled = true;
   btn.querySelector('span').textContent = 'Створюємо…';
   try {
-    const res = await fetch('/api/invitations', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ recipient, image: imageData })
-    });
+    const form = new FormData();
+    form.append('recipient', recipient);
+    form.append('photo', selectedFile, selectedFile.name || 'photo.jpg');
+
+    const res = await fetch('/api/invitations', { method: 'POST', body: form });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Помилка');
     $('#inviteLink').value = data.url;
