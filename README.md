@@ -1,17 +1,18 @@
-# Invite Message v8
+# Invite Message v9
 
-Photo pipeline rebuilt without R2 and without client-side canvas/base64 conversion.
+Ця версія перебудовує фото-пайплайн, щоб прибрати білі/порожні фото на iPhone/Safari.
 
-- creator uploads the original photo as multipart/form-data;
-- Durable Object stores the original binary image in chunks;
-- invitation loads the photo from a dedicated binary /photo endpoint;
-- supports JPG, PNG, WEBP, AVIF, GIF, HEIC and HEIF;
-- old v4-v7 invitations remain readable;
-- opened card contains only the photo;
-- envelope animation and public /i/... link remain.
+## Що змінилось
+- Фото на клієнті декодується й нормалізується в звичайний JPEG (макс. сторона 1800 px).
+- На сервер відправляється тільки JPEG до 4 МБ.
+- У Durable Object JPEG зберігається як дрібні base64-рядки, а не як великі ArrayBuffer.
+- При відкритті запрошення браузер спочатку `fetch()`-ить фото як Blob, перевіряє його і тільки потім показує через Object URL.
+- Якщо фото реально недоступне, замість білого прямокутника показується зрозуміла помилка.
+- Fullscreen містить тільки фото + кнопку закриття.
 
-Deploy:
-
+## Deploy
 ```bash
 npx wrangler deploy
 ```
+
+R2 та D1 не використовуються.

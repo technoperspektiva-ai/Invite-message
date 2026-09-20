@@ -3,24 +3,21 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <meta name="theme-color" content="#efecfb" />
+  <meta name="theme-color" content="#f4f1fb" />
   <title>Invite Message — створити запрошення</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Montserrat:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="/style.css?v=9" />
 </head>
 <body class="creator-page">
-  <div class="aurora a1"></div><div class="aurora a2"></div><div class="grain"></div>
+  <div class="bg-orb orb-a"></div><div class="bg-orb orb-b"></div>
   <main class="creator-shell">
     <header class="creator-intro">
       <p class="eyebrow">ОСОБЛИВІ ЗАПРОШЕННЯ ДЛЯ ВАЖЛИВИХ ЛЮДЕЙ</p>
       <h1>Створи запрошення</h1>
-      <p class="lead">Обери, для кого воно, та додай фото ♡</p>
+      <p class="lead">Обери звертання та додай одне фото</p>
     </header>
 
-    <section class="creator-card glass">
-      <div class="chips" id="recipientChips" aria-label="Оберіть звертання">
+    <section class="creator-card">
+      <div class="chips" aria-label="Оберіть звертання">
         <button type="button" class="chip active" data-value="Дружина">Дружина</button>
         <button type="button" class="chip" data-value="Кохана">Кохана</button>
         <button type="button" class="chip" data-value="Подруга">Подруга</button>
@@ -29,38 +26,42 @@
         <button type="button" class="chip" data-value="Друг">Друг</button>
       </div>
 
-      <label class="photo-drop" for="photoInput">
+      <label class="photo-drop" id="photoDrop" for="photoInput">
         <input id="photoInput" type="file" accept="image/*,.heic,.heif" hidden />
-        <span class="photo-icon">＋</span>
-        <span class="photo-copy"><strong>Додати своє фото</strong><small>JPG, PNG, WEBP, AVIF або HEIC</small></span>
         <img id="photoThumb" alt="Обране фото" hidden />
+        <div class="photo-placeholder" id="photoPlaceholder">
+          <span class="photo-plus">＋</span>
+          <strong>Додати фото</strong>
+          <small>Фото автоматично оптимізується для запрошення</small>
+        </div>
+        <span class="change-pill" id="changePill" hidden>Змінити фото</span>
+        <div class="photo-busy" id="photoBusy" hidden><span></span><b>Готуємо фото…</b></div>
       </label>
 
       <div class="actions">
-        <button class="secondary" id="previewBtn" type="button" disabled>Передперегляд</button>
+        <button class="secondary" id="previewBtn" type="button" disabled>Переглянути</button>
         <button class="primary" id="createBtn" type="button" disabled><span>Створити запрошення</span><b>→</b></button>
       </div>
     </section>
   </main>
 
-  <dialog id="previewDialog" class="preview-dialog">
+  <dialog id="previewDialog" class="photo-dialog">
     <button class="dialog-close" id="previewClose" type="button" aria-label="Закрити">×</button>
-    <div class="preview-card preview-photo-only">
-      <img id="previewPhoto" alt="Фото" />
-    </div>
+    <img id="previewPhoto" alt="Передперегляд фото" />
   </dialog>
 
   <dialog id="linkDialog" class="link-dialog">
-    <button class="dialog-close" id="linkClose" type="button" aria-label="Закрити">×</button>
+    <button class="dialog-close in-card" id="linkClose" type="button" aria-label="Закрити">×</button>
     <span class="success-heart">♡</span>
     <p class="eyebrow">ГОТОВО</p>
     <h2>Запрошення створено</h2>
-    <p>Надішли це посилання — одержувач відкриє окрему сторінку з конвертом та анімацією.</p>
+    <p>Надішли посилання. Одержувач побачить окрему сторінку з конвертом та анімацією.</p>
     <div class="link-box"><input id="inviteLink" readonly /><button id="copyLink" type="button">Копіювати</button></div>
     <button class="primary share-link" id="shareLink" type="button"><span>Надіслати посилання</span><b>↗</b></button>
-    <a class="open-resource" id="openResource" target="_blank" rel="noopener">Відкрити ресурс самому →</a>
+    <a class="open-resource" id="openResource" target="_blank" rel="noopener">Відкрити запрошення →</a>
   </dialog>
 
-  <script src="/creator.js"></script>
+  <div class="toast-host" id="toastHost" aria-live="polite"></div>
+  <script src="/creator.js?v=9"></script>
 </body>
 </html>

@@ -7,43 +7,52 @@ const titles = {
   'Коханий': 'Для коханого',
   'Друг': 'Для друга'
 };
+
 let opened = false;
-let modalTimer;
+let modalTimer = 0;
+let photoObjectUrl = '';
 
 async function init() {
   const id = location.pathname.split('/').filter(Boolean).pop();
   try {
-    const res = await fetch(`/api/invitations/${encodeURIComponent(id)}?t=${Date.now()}`, { cache: 'no-store' });
-    if (!res.ok) throw new Error('not found');
-    const data = await res.json();
-    $('#heroTitle').textContent = titles[data.recipient] || titles['Кохана'];
+    const metaRes = await fetch(`/api/invitations/${encodeURIComponent(id)}?v=9&t=${Date.now()}`, { cache: 'no-store' });
+    if (!metaRes.ok) throw new Error('Запрошення не знайдено');
+    const data = await metaRes.json();
+    $('#heroTitle').textContent = titles[data.recipient] || 'Для тебе';
 
-    const photoUrl = data.photoUrl || `/api/invitations/${encodeURIComponent(id)}/photo`;
-    const src = `${photoUrl}${photoUrl.includes('?') ? '&' : '?'}v=${encodeURIComponent(data.updatedAt || Date.now())}`;
+    const photoRes = await fetch(`${data.photoUrl || `/api/invitations/${encodeURIComponent(id)}/photo`}?v=9&t=${Date.now()}`, { cache: 'no-store' });
+    if (!photoRes.ok) throw new Error(`Фото недоступне (${photoRes.status})`);
+    const type = photoRes.headers.get('content-type') || '';
+    if (!type.startsWith('image/')) throw new Error('Сервер повернув не зображення');
+    const blob = await photoRes.blob();
+    if (!blob.size) throw new Error('Фото порожнє');
 
-    await Promise.all([
-      setImage('#letterPhoto', src),
-      setImage('#fullPhoto', src)
-    ]);
+    photoObjectUrl = URL.createObjectURL(blob);
+    await Promise.all([assignImage($('#letterPhoto'), photoObjectUrl), assignImage($('#fullPhoto'), photoObjectUrl)]);
 
     $('#loading').hidden = true;
     $('#inviteShell').hidden = false;
   } catch (error) {
     console.error(error);
     $('#loading').hidden = true;
+    $('#errorText').textContent = error.message || 'Спробуй відкрити посилання ще раз.';
     $('#notFound').hidden = false;
   }
 }
 
-function setImage(selector, src) {
+function assignImage(img, src) {
   return new Promise((resolve, reject) => {
-    const img = $(selector);
-    const done = () => { img.classList.add('is-loaded'); resolve(); };
-    img.onload = done;
-    img.onerror = () => reject(new Error('photo load failed'));
-    img.decoding = 'async';
+    const onLoad = () => cleanup(true);
+    const onError = () => cleanup(false);
+    const cleanup = (ok) => {
+      img.removeEventListener('load', onLoad);
+      img.removeEventListener('error', onError);
+      ok ? resolve() : reject(new Error('Браузер не зміг показати фото'));
+    };
+    img.addEventListener('load', onLoad, { once: true });
+    img.addEventListener('error', onError, { once: true });
     img.src = src;
-    if (img.complete && img.naturalWidth > 0) done();
+    if (img.complete && img.naturalWidth > 0) cleanup(true);
   });
 }
 
@@ -53,8 +62,8 @@ function openInvitation() {
   $('#envelope').classList.add('open');
   $('#envelope').setAttribute('aria-expanded', 'true');
   $('#openBtn').querySelector('span').textContent = 'Переглянути фото';
-  setTimeout(() => $('#envelope').classList.add('complete'), 780);
-  modalTimer = setTimeout(showModal, 1550);
+  setTimeout(() => $('#envelope').classList.add('complete'), 760);
+  modalTimer = window.setTimeout(showModal, 1500);
 }
 
 function showModal() {
@@ -74,5 +83,6 @@ $('#openBtn').addEventListener('click', openInvitation);
 $('#modalClose').addEventListener('click', closeModal);
 $('#fullModal').addEventListener('click', e => { if (e.target === $('#fullModal')) closeModal(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#fullModal').hidden) closeModal(); });
+window.addEventListener('pagehide', () => { if (photoObjectUrl) URL.revokeObjectURL(photoObjectUrl); });
 
 init();
