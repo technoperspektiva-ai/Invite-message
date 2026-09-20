@@ -57,3 +57,34 @@ body.modal-open{overflow:hidden}
   .full-card.photo-only-full{width:min(94vw,520px);max-height:76dvh;min-height:180px;border-radius:22px}
   .full-card.photo-only-full img{max-height:76dvh;border-radius:22px}
 }
+
+/* v7 — data-URL photo delivery + mobile-first creator cleanup */
+@media(max-width:560px){
+  .creator-shell{padding:max(18px,env(safe-area-inset-top)) 12px max(18px,env(safe-area-inset-bottom));gap:12px;min-height:100dvh}
+  .creator-intro{padding:2px 10px 0}
+  .creator-intro .eyebrow{max-width:330px;margin:0 auto;font-size:8px;line-height:1.45;letter-spacing:.20em}
+  .creator-intro h1{font-size:clamp(42px,12vw,52px);line-height:.92;margin:10px auto 0;max-width:360px}
+  .creator-intro .lead{font-size:18px;line-height:1.15;margin:9px auto 0;max-width:330px}
+  .creator-card{padding:12px;border-radius:22px;box-shadow:0 16px 42px rgba(68,55,94,.08)}
+  .chips{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;padding-bottom:11px}
+  .chip{font-size:11px;padding:9px 4px;min-height:38px}
+  .photo-drop{aspect-ratio:1.42/1;max-height:260px;border-radius:20px}
+  .photo-drop img{border-radius:18px}
+  .photo-icon{width:42px;height:42px;font-size:24px}
+  .photo-copy strong{font-size:14px}.photo-copy small{font-size:9px}
+  .actions{grid-template-columns:1fr 1.35fr;gap:8px;margin-top:10px}
+  .primary,.secondary{min-height:48px;padding:11px 10px;font-size:12px}
+  .primary b{font-size:20px}
+  .photo-drop.has-photo::before{font-size:9px;right:8px;bottom:8px;padding:7px 9px}
+}
+
+@media(max-width:380px){
+  .creator-intro h1{font-size:40px}
+  .chips{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .actions{grid-template-columns:1fr}
+}
+
+/* The photo itself must be the only visible content inside the opened card. */
+.full-card.photo-only-full{background:transparent!important;min-height:0!important;box-shadow:none!important}
+.full-card.photo-only-full img{background:transparent!important;opacity:1!important}
+.photo-only-letter img{opacity:1!important}

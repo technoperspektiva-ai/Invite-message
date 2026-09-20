@@ -9,20 +9,24 @@ const titles = {
 };
 let opened = false;
 let modalTimer;
-let photoObjectUrl = '';
+let imageData = '';
 
 async function init() {
   const id = location.pathname.split('/').filter(Boolean).pop();
   try {
-    const res = await fetch(`/api/invitations/${encodeURIComponent(id)}`, { cache: 'no-store' });
+    const res = await fetch(`/api/invitations/${encodeURIComponent(id)}?t=${Date.now()}`, { cache: 'no-store' });
     if (!res.ok) throw new Error('not found');
     const data = await res.json();
     $('#heroTitle').textContent = titles[data.recipient] || titles['Кохана'];
 
-    photoObjectUrl = await fetchPhoto(`/api/invitations/${encodeURIComponent(id)}/photo?t=${Date.now()}`);
+    imageData = String(data.image || '');
+    if (!imageData.startsWith('data:image/')) {
+      imageData = await fetchPhotoFallback(`/api/invitations/${encodeURIComponent(id)}/photo?t=${Date.now()}`);
+    }
+
     await Promise.all([
-      setImage('#letterPhoto', photoObjectUrl),
-      setImage('#fullPhoto', photoObjectUrl)
+      setImage('#letterPhoto', imageData),
+      setImage('#fullPhoto', imageData)
     ]);
 
     $('#loading').hidden = true;
@@ -34,23 +38,37 @@ async function init() {
   }
 }
 
-async function fetchPhoto(url) {
+async function fetchPhotoFallback(url) {
   const res = await fetch(url, { cache: 'no-store' });
   if (!res.ok) throw new Error('photo not found');
   const blob = await res.blob();
   if (!blob.type.startsWith('image/')) throw new Error('invalid photo');
-  return URL.createObjectURL(blob);
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.readAsDataURL(blob);
+  });
 }
 
 function setImage(selector, src) {
   return new Promise((resolve, reject) => {
     const img = $(selector);
+    let settled = false;
     const done = () => {
+      if (settled) return;
+      settled = true;
       img.classList.add('is-loaded');
       resolve();
     };
+    const fail = (e) => {
+      if (settled) return;
+      settled = true;
+      reject(e || new Error('image load failed'));
+    };
     img.onload = done;
-    img.onerror = reject;
+    img.onerror = fail;
+    img.decoding = 'async';
     img.src = src;
     if (img.complete && img.naturalWidth > 0) done();
   });
@@ -83,6 +101,5 @@ $('#openBtn').addEventListener('click', openInvitation);
 $('#modalClose').addEventListener('click', closeModal);
 $('#fullModal').addEventListener('click', e => { if (e.target === $('#fullModal')) closeModal(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#fullModal').hidden) closeModal(); });
-window.addEventListener('pagehide', () => { if (photoObjectUrl) URL.revokeObjectURL(photoObjectUrl); });
 
 init();

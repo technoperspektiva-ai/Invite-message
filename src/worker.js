@@ -22,57 +22,57 @@ export class InvitationStore {
         updatedAt: data.updatedAt
       };
 
-      const base64 = parsed.base64;
-      const count = Math.ceil(base64.length / PHOTO_CHUNK_SIZE);
+      const count = Math.ceil(parsed.base64.length / PHOTO_CHUNK_SIZE);
       const values = {
         invite: meta,
-        photoManifest: { type: parsed.type, count, version: 2 }
+        photoManifest: { type: parsed.type, count, version: 3 }
       };
       for (let i = 0; i < count; i++) {
-        values[`photo:${String(i).padStart(3, "0")}`] = base64.slice(i * PHOTO_CHUNK_SIZE, (i + 1) * PHOTO_CHUNK_SIZE);
+        values[`photo:${String(i).padStart(3, "0")}`] = parsed.base64.slice(i * PHOTO_CHUNK_SIZE, (i + 1) * PHOTO_CHUNK_SIZE);
       }
       await this.ctx.storage.put(values);
       return new Response("ok");
     }
 
     if (request.method === "GET" && url.pathname === "/get") {
-      const data = await this.ctx.storage.get("invite");
-      if (!data) return new Response("not found", { status: 404 });
-      const { image, ...meta } = data;
-      return Response.json(meta);
+      const meta = await this.ctx.storage.get("invite");
+      if (!meta) return new Response("not found", { status: 404 });
+      const image = await readPhotoAsDataUrl(this.ctx.storage, meta);
+      if (!image) return new Response("photo not found", { status: 404 });
+      return Response.json({ ...meta, image });
     }
 
     if (request.method === "GET" && url.pathname === "/photo") {
-      // v6: photo is stored as small base64 chunks so it works reliably
-      // with Durable Object storage and does not require R2.
-      const manifest = await this.ctx.storage.get("photoManifest");
-      if (manifest?.count) {
-        const keys = Array.from({ length: manifest.count }, (_, i) => `photo:${String(i).padStart(3, "0")}`);
-        const chunks = await this.ctx.storage.get(keys);
-        const base64 = keys.map(key => chunks.get(key) || "").join("");
-        if (base64) {
-          const bytes = base64ToBytes(base64);
-          return imageResponse(bytes, manifest.type || "image/jpeg");
-        }
-      }
-
-      // Compatibility with v5 binary storage.
-      const binary = await this.ctx.storage.get("photo");
-      if (binary) {
-        const type = await this.ctx.storage.get("photoType") || "image/jpeg";
-        return imageResponse(binary, type);
-      }
-
-      // Compatibility with v4, where the Data URL lived in the invite object.
-      const legacy = await this.ctx.storage.get("invite");
-      const parsed = legacy?.image ? parseDataImage(String(legacy.image)) : null;
-      if (parsed) return imageResponse(parsed.bytes, parsed.type);
-
-      return new Response("not found", { status: 404 });
+      const image = await readPhotoAsDataUrl(this.ctx.storage, await this.ctx.storage.get("invite"));
+      const parsed = image ? parseDataImage(image) : null;
+      if (!parsed) return new Response("not found", { status: 404 });
+      return imageResponse(parsed.bytes, parsed.type);
     }
 
     return new Response("not found", { status: 404 });
   }
+}
+
+async function readPhotoAsDataUrl(storage, legacyInvite) {
+  const manifest = await storage.get("photoManifest");
+  if (manifest?.count) {
+    const keys = Array.from({ length: manifest.count }, (_, i) => `photo:${String(i).padStart(3, "0")}`);
+    const chunks = await storage.get(keys);
+    const base64 = keys.map(key => chunks.get(key) || "").join("");
+    if (base64) return `data:${manifest.type || "image/jpeg"};base64,${base64}`;
+  }
+
+  // Compatibility with v5 binary storage.
+  const binary = await storage.get("photo");
+  if (binary) {
+    const type = await storage.get("photoType") || "image/jpeg";
+    const bytes = binary instanceof Uint8Array ? binary : new Uint8Array(binary);
+    return `data:${type};base64,${bytesToBase64(bytes)}`;
+  }
+
+  // Compatibility with v4, where the Data URL lived in the invite object.
+  if (legacyInvite?.image && parseDataImage(String(legacyInvite.image))) return String(legacyInvite.image);
+  return "";
 }
 
 const RECIPIENTS = new Set(["Дружина", "Кохана", "Подруга", "Чоловік", "Коханий", "Друг"]);
@@ -87,7 +87,7 @@ function shortId() {
 }
 
 function parseDataImage(value) {
-  const match = /^data:(image\/(?:jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(value);
+  const match = /^data:(image\/(?:jpeg|webp|png));base64,([A-Za-z0-9+/=]+)$/.exec(value);
   if (!match) return null;
   const bytes = base64ToBytes(match[2]);
   return { type: match[1], base64: match[2], bytes };
@@ -98,6 +98,15 @@ function base64ToBytes(base64) {
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes;
+}
+
+function bytesToBase64(bytes) {
+  let binary = "";
+  const step = 0x8000;
+  for (let i = 0; i < bytes.length; i += step) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + step));
+  }
+  return btoa(binary);
 }
 
 function imageResponse(body, type) {

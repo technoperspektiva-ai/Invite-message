@@ -1,17 +1,14 @@
-# Invite Message v6
+# Invite Message v7
 
-Виправлення цієї версії:
-- фото зберігається без R2 у Durable Object невеликими чанками;
-- виправлено порожній fullscreen-перегляд фото в Safari/iPhone;
-- fullscreen містить тільки фото та кнопку закриття;
-- збережено окреме посилання `/i/<id>` і анімацію конверта;
-- перероблена мобільна версія екрана створення: адаптивний заголовок, 2-колонковий вибір звертання, нормальна зона фото та кнопки без переповнення;
-- підтримуються запрошення, створені у v4/v5.
+Fixes:
+- photo is reconstructed in the Durable Object and returned as a Data URL in the invitation API;
+- Safari/iPhone no longer depends on Blob/ObjectURL rendering for the invitation image;
+- opened preview contains only the photo;
+- mobile creator layout was rebuilt for narrow screens;
+- R2 is not used.
 
-## Deploy
+Deploy:
 
 ```bash
 npx wrangler deploy
 ```
-
-R2 не потрібен.
