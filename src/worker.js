@@ -1,7 +1,6 @@
-const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" };
+const JSON_HEADERS = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
 const RECIPIENTS = new Set(["Дружина", "Кохана", "Подруга", "Чоловік", "Коханий", "Друг"]);
-const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
-const B64_CHUNK = 48_000;
+const MAX_JPEG_BYTES = 900 * 1024;
 
 export class InvitationStore {
   constructor(ctx, env) {
@@ -12,91 +11,79 @@ export class InvitationStore {
   async fetch(request) {
     const url = new URL(request.url);
 
-    if (request.method === "POST" && url.pathname === "/store-v9") {
+    if (request.method === "POST" && url.pathname === "/store-v10") {
       const recipient = decodeURIComponent(url.searchParams.get("recipient") || "");
       const type = String(request.headers.get("x-photo-type") || "image/jpeg").toLowerCase();
       const bytes = new Uint8Array(await request.arrayBuffer());
 
       if (!RECIPIENTS.has(recipient)) return new Response("bad recipient", { status: 400 });
       if (type !== "image/jpeg") return new Response("photo must be jpeg", { status: 415 });
-      if (!bytes.byteLength || bytes.byteLength > MAX_UPLOAD_BYTES) return new Response("bad photo size", { status: 413 });
+      if (!bytes.byteLength || bytes.byteLength > MAX_JPEG_BYTES) return new Response("bad photo size", { status: 413 });
 
-      const base64 = bytesToBase64(bytes);
-      const count = Math.ceil(base64.length / B64_CHUNK);
-      if (count > 120) return new Response("photo too large", { status: 413 });
+      const imageData = `data:image/jpeg;base64,${bytesToBase64(bytes)}`;
+      // SQLite-backed Durable Object values may be up to 2 MiB. We deliberately
+      // keep the complete record well below that to avoid chunking/reassembly bugs.
+      if (imageData.length > 1_450_000) return new Response("encoded photo too large", { status: 413 });
 
-      const now = Date.now();
-      const entries = {
-        invite: { recipient, createdAt: now, updatedAt: now, photoVersion: 9 },
-        photoManifestV9: {
-          type: "image/jpeg",
-          count,
-          byteLength: bytes.byteLength,
-          base64Length: base64.length,
-          version: 9
-        }
+      const record = {
+        version: 10,
+        recipient,
+        imageData,
+        createdAt: Date.now()
       };
 
-      for (let i = 0; i < count; i++) {
-        entries[`photo9:${String(i).padStart(3, "0")}`] = base64.slice(i * B64_CHUNK, (i + 1) * B64_CHUNK);
-      }
-
-      await this.ctx.storage.put(entries);
+      await this.ctx.storage.put("recordV10", record);
+      // Keep minimal metadata for backwards/debug compatibility.
+      await this.ctx.storage.put("invite", { recipient, createdAt: record.createdAt, photoVersion: 10 });
       return new Response("ok");
     }
 
-    if (request.method === "GET" && url.pathname === "/get") {
+    if (request.method === "GET" && url.pathname === "/public") {
+      const current = await this.ctx.storage.get("recordV10");
+      if (current?.recipient && current?.imageData) {
+        return Response.json(current, { headers: { "cache-control": "no-store" } });
+      }
+
+      // Backwards compatibility for links made by v4-v9.
       const meta = await this.ctx.storage.get("invite");
       if (!meta) return new Response("not found", { status: 404 });
-      return Response.json(meta);
-    }
-
-    if (request.method === "GET" && url.pathname === "/photo") {
-      const photo = await readStoredPhoto(this.ctx.storage);
-      if (!photo) return new Response("not found", { status: 404 });
-      return new Response(photo.bytes, {
-        headers: {
-          "content-type": photo.type,
-          "content-length": String(photo.bytes.byteLength),
-          "cache-control": "no-store, max-age=0",
-          "content-disposition": "inline; filename=invitation-photo.jpg",
-          "x-content-type-options": "nosniff"
-        }
-      });
+      const legacyPhoto = await readLegacyPhoto(this.ctx.storage);
+      if (!legacyPhoto) return new Response("photo not found", { status: 404 });
+      return Response.json({
+        version: Number(meta.photoVersion || 9),
+        recipient: meta.recipient,
+        imageData: `data:${legacyPhoto.type};base64,${bytesToBase64(legacyPhoto.bytes)}`,
+        createdAt: meta.createdAt || Date.now()
+      }, { headers: { "cache-control": "no-store" } });
     }
 
     return new Response("not found", { status: 404 });
   }
 }
 
-async function readStoredPhoto(storage) {
-  // v9: canonical, browser-safe JPEG stored as small base64 strings.
+async function readLegacyPhoto(storage) {
   const v9 = await storage.get("photoManifestV9");
   if (v9?.count) {
     const keys = Array.from({ length: v9.count }, (_, i) => `photo9:${String(i).padStart(3, "0")}`);
     const chunks = await storage.get(keys);
     const base64 = keys.map(key => chunks.get(key) || "").join("");
-    if (!base64 || base64.length !== Number(v9.base64Length || base64.length)) return null;
-    const bytes = base64ToBytes(base64);
-    if (v9.byteLength && bytes.byteLength !== Number(v9.byteLength)) return null;
-    return { type: "image/jpeg", bytes };
+    if (base64) return { type: "image/jpeg", bytes: base64ToBytes(base64) };
   }
 
-  // v8 compatibility.
   const v8 = await storage.get("photoManifestV8");
   if (v8?.count) {
     const keys = Array.from({ length: v8.count }, (_, i) => `photo8:${String(i).padStart(3, "0")}`);
     const chunks = await storage.get(keys);
     const parts = keys.map(key => toUint8(chunks.get(key)));
-    if (parts.some(x => !x)) return null;
-    const total = parts.reduce((sum, x) => sum + x.byteLength, 0);
-    const out = new Uint8Array(total);
-    let offset = 0;
-    for (const part of parts) { out.set(part, offset); offset += part.byteLength; }
-    return { type: v8.type || "image/jpeg", bytes: out };
+    if (!parts.some(x => !x)) {
+      const total = parts.reduce((sum, x) => sum + x.byteLength, 0);
+      const out = new Uint8Array(total);
+      let offset = 0;
+      for (const part of parts) { out.set(part, offset); offset += part.byteLength; }
+      return { type: v8.type || "image/jpeg", bytes: out };
+    }
   }
 
-  // v5-v7 compatibility.
   const manifest = await storage.get("photoManifest");
   if (manifest?.count) {
     const keys = Array.from({ length: manifest.count }, (_, i) => `photo:${String(i).padStart(3, "0")}`);
@@ -116,7 +103,6 @@ async function readStoredPhoto(storage) {
     const match = /^data:(image\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)$/i.exec(String(legacy.image));
     if (match) return { type: match[1], bytes: base64ToBytes(match[2]) };
   }
-
   return null;
 }
 
@@ -157,14 +143,8 @@ function inviteStub(env, id) {
   return env.INVITES.get(env.INVITES.idFromName(id));
 }
 
-async function getInvite(env, id) {
-  const res = await inviteStub(env, id).fetch("https://invite.internal/get");
-  if (!res.ok) return null;
-  return res.json();
-}
-
-async function getPhoto(env, id) {
-  return inviteStub(env, id).fetch("https://invite.internal/photo");
+async function fetchPublic(env, id) {
+  return inviteStub(env, id).fetch("https://invite.internal/public");
 }
 
 export default {
@@ -183,36 +163,37 @@ export default {
         if (!RECIPIENTS.has(recipient)) return json({ error: "Некоректне звертання" }, 400);
         if (!file || typeof file.arrayBuffer !== "function") return json({ error: "Додай фото" }, 400);
         if (String(file.type || "").toLowerCase() !== "image/jpeg") return json({ error: "Фото не було підготовлене як JPEG" }, 415);
-        if (!file.size || file.size > MAX_UPLOAD_BYTES) return json({ error: "Підготовлене фото має бути до 4 МБ" }, 413);
+        if (!file.size || file.size > MAX_JPEG_BYTES) return json({ error: "Підготовлене фото завелике" }, 413);
 
         const id = shortId();
         const bytes = await file.arrayBuffer();
-        const res = await inviteStub(env, id).fetch(`https://invite.internal/store-v9?recipient=${encodeURIComponent(recipient)}`, {
+        const storeRes = await inviteStub(env, id).fetch(`https://invite.internal/store-v10?recipient=${encodeURIComponent(recipient)}`, {
           method: "POST",
           headers: { "x-photo-type": "image/jpeg" },
           body: bytes
         });
-        if (!res.ok) throw new Error(`store failed: ${res.status} ${await res.text()}`);
+        if (!storeRes.ok) throw new Error(`store failed: ${storeRes.status} ${await storeRes.text()}`);
+
+        // Critical reliability check: do not hand the user a dead link.
+        const verify = await fetchPublic(env, id);
+        if (!verify.ok) throw new Error(`verify failed: ${verify.status}`);
+        const verified = await verify.json();
+        if (!verified?.imageData?.startsWith("data:image/jpeg;base64,") || !RECIPIENTS.has(verified.recipient)) {
+          throw new Error("verify payload invalid");
+        }
 
         return json({ id, url: `${url.origin}/i/${id}` }, 201);
       } catch (error) {
         console.error("create invitation failed", error);
-        return json({ error: "Не вдалося зберегти фото. Спробуй інше фото або ще раз." }, 500);
+        return json({ error: "Не вдалося створити запрошення. Фото не було надійно збережене — спробуй ще раз." }, 500);
       }
-    }
-
-    const photoMatch = url.pathname.match(/^\/api\/invitations\/([a-z0-9]+)\/photo$/i);
-    if (request.method === "GET" && photoMatch) {
-      const res = await getPhoto(env, photoMatch[1]);
-      if (!res.ok) return new Response("Фото не знайдено", { status: 404 });
-      return res;
     }
 
     const apiMatch = url.pathname.match(/^\/api\/invitations\/([a-z0-9]+)$/i);
     if (request.method === "GET" && apiMatch) {
-      const data = await getInvite(env, apiMatch[1]);
-      if (!data) return json({ error: "Запрошення не знайдено" }, 404);
-      return json({ ...data, photoUrl: `/api/invitations/${apiMatch[1]}/photo` });
+      const res = await fetchPublic(env, apiMatch[1]);
+      if (!res.ok) return json({ error: "Запрошення не знайдено" }, 404);
+      return new Response(res.body, { status: 200, headers: JSON_HEADERS });
     }
 
     if (request.method === "GET" && /^\/i\/[a-z0-9]+$/i.test(url.pathname)) {

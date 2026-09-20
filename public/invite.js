@@ -10,25 +10,20 @@ const titles = {
 
 let opened = false;
 let modalTimer = 0;
-let photoObjectUrl = '';
 
 async function init() {
   const id = location.pathname.split('/').filter(Boolean).pop();
   try {
-    const metaRes = await fetch(`/api/invitations/${encodeURIComponent(id)}?v=9&t=${Date.now()}`, { cache: 'no-store' });
-    if (!metaRes.ok) throw new Error('Запрошення не знайдено');
-    const data = await metaRes.json();
+    const res = await fetch(`/api/invitations/${encodeURIComponent(id)}?v=10&t=${Date.now()}`, { cache: 'no-store' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Запрошення не знайдено');
+    if (!data.imageData || !data.imageData.startsWith('data:image/')) throw new Error('Фото в запрошенні відсутнє');
+
     $('#heroTitle').textContent = titles[data.recipient] || 'Для тебе';
-
-    const photoRes = await fetch(`${data.photoUrl || `/api/invitations/${encodeURIComponent(id)}/photo`}?v=9&t=${Date.now()}`, { cache: 'no-store' });
-    if (!photoRes.ok) throw new Error(`Фото недоступне (${photoRes.status})`);
-    const type = photoRes.headers.get('content-type') || '';
-    if (!type.startsWith('image/')) throw new Error('Сервер повернув не зображення');
-    const blob = await photoRes.blob();
-    if (!blob.size) throw new Error('Фото порожнє');
-
-    photoObjectUrl = URL.createObjectURL(blob);
-    await Promise.all([assignImage($('#letterPhoto'), photoObjectUrl), assignImage($('#fullPhoto'), photoObjectUrl)]);
+    await Promise.all([
+      assignImage($('#letterPhoto'), data.imageData),
+      assignImage($('#fullPhoto'), data.imageData)
+    ]);
 
     $('#loading').hidden = true;
     $('#inviteShell').hidden = false;
@@ -42,17 +37,15 @@ async function init() {
 
 function assignImage(img, src) {
   return new Promise((resolve, reject) => {
-    const onLoad = () => cleanup(true);
-    const onError = () => cleanup(false);
-    const cleanup = (ok) => {
-      img.removeEventListener('load', onLoad);
-      img.removeEventListener('error', onError);
-      ok ? resolve() : reject(new Error('Браузер не зміг показати фото'));
+    const done = (ok) => {
+      img.onload = null;
+      img.onerror = null;
+      ok ? resolve() : reject(new Error('Фото не вдалося відкрити'));
     };
-    img.addEventListener('load', onLoad, { once: true });
-    img.addEventListener('error', onError, { once: true });
+    img.onload = () => done(true);
+    img.onerror = () => done(false);
     img.src = src;
-    if (img.complete && img.naturalWidth > 0) cleanup(true);
+    if (img.complete && img.naturalWidth > 0) done(true);
   });
 }
 
@@ -83,6 +76,5 @@ $('#openBtn').addEventListener('click', openInvitation);
 $('#modalClose').addEventListener('click', closeModal);
 $('#fullModal').addEventListener('click', e => { if (e.target === $('#fullModal')) closeModal(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#fullModal').hidden) closeModal(); });
-window.addEventListener('pagehide', () => { if (photoObjectUrl) URL.revokeObjectURL(photoObjectUrl); });
 
 init();

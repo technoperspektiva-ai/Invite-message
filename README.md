@@ -1,18 +1,21 @@
-# Invite Message v9
+# Invite Message v10 — reliable invitation links
 
-Ця версія перебудовує фото-пайплайн, щоб прибрати білі/порожні фото на iPhone/Safari.
-
-## Що змінилось
-- Фото на клієнті декодується й нормалізується в звичайний JPEG (макс. сторона 1800 px).
-- На сервер відправляється тільки JPEG до 4 МБ.
-- У Durable Object JPEG зберігається як дрібні base64-рядки, а не як великі ArrayBuffer.
-- При відкритті запрошення браузер спочатку `fetch()`-ить фото як Blob, перевіряє його і тільки потім показує через Object URL.
-- Якщо фото реально недоступне, замість білого прямокутника показується зрозуміла помилка.
-- Fullscreen містить тільки фото + кнопку закриття.
+This build removes the fragile photo-chunk reconstruction path for newly created invitations.
 
 ## Deploy
+
 ```bash
 npx wrangler deploy
 ```
 
-R2 та D1 не використовуються.
+No R2, D1 or manual database ID is required. The project uses a SQLite-backed Durable Object.
+
+## Reliability changes
+
+- Creator always converts the selected image to browser-safe JPEG.
+- JPEG is aggressively kept below 900 KiB.
+- The complete invitation (recipient + image data URL) is stored as one Durable Object value, safely below the 2 MiB SQLite-backed DO value limit.
+- The Worker verifies the stored invitation before returning the public link.
+- The browser performs a second verification before showing the link/share dialog.
+- `/i/<id>` uses a single API response for metadata + photo, so there is no separate photo endpoint that can fail independently.
+- v4-v9 links have a best-effort legacy reader.

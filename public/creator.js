@@ -31,7 +31,7 @@ $('#photoInput').addEventListener('change', async (event) => {
   } catch (error) {
     console.error(error);
     preparedBlob = null;
-    toast('Не вдалося прочитати це фото. Спробуй інше.');
+    toast('Не вдалося підготувати фото. Спробуй інше.');
   } finally {
     setBusy(false);
   }
@@ -39,49 +39,53 @@ $('#photoInput').addEventListener('change', async (event) => {
 
 async function normalizePhoto(file) {
   if (!file.size) throw new Error('empty file');
-  if (file.size > 25 * 1024 * 1024) throw new Error('source too large');
+  if (file.size > 30 * 1024 * 1024) throw new Error('source too large');
 
-  let bitmap = null;
-  try {
-    bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
-  } catch (_) {}
-
-  let width, height, source;
-  if (bitmap) {
-    width = bitmap.width; height = bitmap.height; source = bitmap;
-  } else {
-    const objectUrl = URL.createObjectURL(file);
-    try {
-      const img = await loadImage(objectUrl);
-      width = img.naturalWidth; height = img.naturalHeight; source = img;
-    } finally {
-      URL.revokeObjectURL(objectUrl);
-    }
-  }
-
+  const source = await decodeSource(file);
+  let width = source.width;
+  let height = source.height;
   if (!width || !height) throw new Error('image dimensions unavailable');
-  const maxSide = 1800;
-  const scale = Math.min(1, maxSide / Math.max(width, height));
-  const outW = Math.max(1, Math.round(width * scale));
-  const outH = Math.max(1, Math.round(height * scale));
 
-  const canvas = document.createElement('canvas');
-  canvas.width = outW; canvas.height = outH;
-  const ctx = canvas.getContext('2d', { alpha: false });
-  if (!ctx) throw new Error('canvas unavailable');
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, outW, outH);
-  ctx.drawImage(source, 0, 0, outW, outH);
-  bitmap?.close?.();
+  let maxSide = 1200;
+  let quality = 0.84;
+  let blob = null;
 
-  let quality = 0.88;
-  let blob = await canvasToBlob(canvas, quality);
-  while (blob.size > 3.7 * 1024 * 1024 && quality > 0.62) {
-    quality -= 0.08;
+  // We target <= 850 KiB so the complete invitation record stays safely under
+  // Durable Objects' 2 MiB per-value limit even after base64 encoding.
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const scale = Math.min(1, maxSide / Math.max(width, height));
+    const outW = Math.max(1, Math.round(width * scale));
+    const outH = Math.max(1, Math.round(height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = outW;
+    canvas.height = outH;
+    const ctx = canvas.getContext('2d', { alpha: false });
+    if (!ctx) throw new Error('canvas unavailable');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, outW, outH);
+    ctx.drawImage(source.drawable, 0, 0, outW, outH);
     blob = await canvasToBlob(canvas, quality);
+    if (blob.size <= 850 * 1024) break;
+    if (quality > 0.62) quality -= 0.07;
+    else maxSide = Math.round(maxSide * 0.82);
   }
-  if (!blob.size || blob.size > 4 * 1024 * 1024) throw new Error('normalized image too large');
+
+  source.cleanup?.();
+  if (!blob?.size || blob.size > 900 * 1024) throw new Error('normalized image too large');
   return blob;
+}
+
+async function decodeSource(file) {
+  if ('createImageBitmap' in window) {
+    try {
+      const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+      return { width: bitmap.width, height: bitmap.height, drawable: bitmap, cleanup: () => bitmap.close?.() };
+    } catch (_) {}
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+  const img = await loadImage(objectUrl).catch(err => { URL.revokeObjectURL(objectUrl); throw err; });
+  return { width: img.naturalWidth, height: img.naturalHeight, drawable: img, cleanup: () => URL.revokeObjectURL(objectUrl) };
 }
 
 function loadImage(src) {
@@ -125,7 +129,7 @@ $('#createBtn').addEventListener('click', async () => {
   btn.disabled = true;
   const label = btn.querySelector('span');
   const old = label.textContent;
-  label.textContent = 'Зберігаємо…';
+  label.textContent = 'Перевіряємо…';
 
   try {
     const form = new FormData();
@@ -135,6 +139,14 @@ $('#createBtn').addEventListener('click', async () => {
     const res = await fetch('/api/invitations', { method: 'POST', body: form, cache: 'no-store' });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `Помилка ${res.status}`);
+
+    // One more public-path check from the browser before showing the link.
+    const id = data.id;
+    const check = await fetch(`/api/invitations/${encodeURIComponent(id)}?t=${Date.now()}`, { cache: 'no-store' });
+    const payload = await check.json().catch(() => ({}));
+    if (!check.ok || !payload.imageData?.startsWith('data:image/jpeg;base64,')) {
+      throw new Error('Запрошення не пройшло перевірку. Спробуй ще раз.');
+    }
 
     $('#inviteLink').value = data.url;
     $('#openResource').href = data.url;
@@ -168,5 +180,5 @@ function toast(message) {
   el.className = 'toast';
   el.textContent = message;
   $('#toastHost').appendChild(el);
-  setTimeout(() => el.remove(), 2500);
+  setTimeout(() => el.remove(), 3200);
 }
