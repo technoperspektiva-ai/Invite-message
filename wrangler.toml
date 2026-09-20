@@ -1,7 +1,19 @@
-name = "sweet-wife-invitation"
-compatibility_date = "2026-09-19"
+name = "love-invite-studio"
+main = "src/worker.js"
+compatibility_date = "2026-09-20"
 
 [assets]
 directory = "./public"
+binding = "ASSETS"
 not_found_handling = "single-page-application"
 html_handling = "auto-trailing-slash"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "love-invite-db"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "love-invite-media"
