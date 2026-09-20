@@ -10,19 +10,26 @@ const titles = {
 
 let opened = false;
 let modalTimer = 0;
+let photoObjectUrl = '';
 
 async function init() {
   const id = location.pathname.split('/').filter(Boolean).pop();
   try {
-    const res = await fetch(`/api/invitations/${encodeURIComponent(id)}?v=10&t=${Date.now()}`, { cache: 'no-store' });
+    const res = await fetch(`/api/invitations/${encodeURIComponent(id)}?t=${Date.now()}`, { cache: 'no-store' });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'Запрошення не знайдено');
-    if (!data.imageData || !data.imageData.startsWith('data:image/')) throw new Error('Фото в запрошенні відсутнє');
+    if (!data.photoUrl) throw new Error('Фото в запрошенні відсутнє');
 
+    const photoRes = await fetch(`${data.photoUrl}?t=${Date.now()}`, { cache: 'no-store' });
+    if (!photoRes.ok) throw new Error('Фото запрошення не завантажилося');
+    const blob = await photoRes.blob();
+    if (!blob.size || !String(blob.type).startsWith('image/')) throw new Error('Фото запрошення пошкоджене');
+
+    photoObjectUrl = URL.createObjectURL(blob);
     $('#heroTitle').textContent = titles[data.recipient] || 'Для тебе';
     await Promise.all([
-      assignImage($('#letterPhoto'), data.imageData),
-      assignImage($('#fullPhoto'), data.imageData)
+      assignImage($('#letterPhoto'), photoObjectUrl),
+      assignImage($('#fullPhoto'), photoObjectUrl)
     ]);
 
     $('#loading').hidden = true;
@@ -37,7 +44,10 @@ async function init() {
 
 function assignImage(img, src) {
   return new Promise((resolve, reject) => {
+    let settled = false;
     const done = (ok) => {
+      if (settled) return;
+      settled = true;
       img.onload = null;
       img.onerror = null;
       ok ? resolve() : reject(new Error('Фото не вдалося відкрити'));
@@ -76,5 +86,6 @@ $('#openBtn').addEventListener('click', openInvitation);
 $('#modalClose').addEventListener('click', closeModal);
 $('#fullModal').addEventListener('click', e => { if (e.target === $('#fullModal')) closeModal(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#fullModal').hidden) closeModal(); });
+window.addEventListener('pagehide', () => { if (photoObjectUrl) URL.revokeObjectURL(photoObjectUrl); });
 
 init();

@@ -1,13 +1,13 @@
 {
   "name": "invite-message",
   "private": true,
-  "version": "9.0.0",
+  "version": "11.0.0",
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy"
   },
   "devDependencies": {
-    "wrangler": "^4.0.0"
+    "wrangler": "^4.135.0"
   }
 }

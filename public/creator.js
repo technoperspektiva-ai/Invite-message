@@ -140,12 +140,17 @@ $('#createBtn').addEventListener('click', async () => {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `Помилка ${res.status}`);
 
-    // One more public-path check from the browser before showing the link.
+    // Verify both metadata and the actual image through the same public URLs the recipient will use.
     const id = data.id;
     const check = await fetch(`/api/invitations/${encodeURIComponent(id)}?t=${Date.now()}`, { cache: 'no-store' });
     const payload = await check.json().catch(() => ({}));
-    if (!check.ok || !payload.imageData?.startsWith('data:image/jpeg;base64,')) {
+    if (!check.ok || !payload.photoUrl || !payload.recipient) {
       throw new Error('Запрошення не пройшло перевірку. Спробуй ще раз.');
+    }
+    const photoCheck = await fetch(`${payload.photoUrl}?t=${Date.now()}`, { cache: 'no-store' });
+    const photoBlob = await photoCheck.blob().catch(() => null);
+    if (!photoCheck.ok || !photoBlob?.size || !String(photoBlob.type).startsWith('image/')) {
+      throw new Error('Фото не пройшло перевірку. Спробуй ще раз.');
     }
 
     $('#inviteLink').value = data.url;

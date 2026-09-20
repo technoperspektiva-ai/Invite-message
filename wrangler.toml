@@ -9,10 +9,17 @@ not_found_handling = "single-page-application"
 html_handling = "auto-trailing-slash"
 run_worker_first = ["/api/*", "/i/*"]
 
-[[durable_objects.bindings]]
-name = "INVITES"
-class_name = "InvitationStore"
+# Wrangler 4.45+ automatically provisions this D1 database on deploy.
+# No account-specific database_id is required in the repository.
+[[d1_databases]]
+binding = "DB"
 
+# The previous deployed versions used a SQLite Durable Object class.
+# Keep the migration history and explicitly retire it while moving to D1.
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["InvitationStore"]
+
+[[migrations]]
+tag = "v2"
+deleted_classes = ["InvitationStore"]
