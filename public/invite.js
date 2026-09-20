@@ -9,6 +9,7 @@ const titles = {
 };
 let opened = false;
 let modalTimer;
+let photoObjectUrl = '';
 
 async function init() {
   const id = location.pathname.split('/').filter(Boolean).pop();
@@ -18,10 +19,10 @@ async function init() {
     const data = await res.json();
     $('#heroTitle').textContent = titles[data.recipient] || titles['Кохана'];
 
-    const photoUrl = `/api/invitations/${encodeURIComponent(id)}/photo?v=${encodeURIComponent(data.updatedAt || data.createdAt || Date.now())}`;
+    photoObjectUrl = await fetchPhoto(`/api/invitations/${encodeURIComponent(id)}/photo?t=${Date.now()}`);
     await Promise.all([
-      setImage('#letterPhoto', photoUrl),
-      setImage('#fullPhoto', photoUrl)
+      setImage('#letterPhoto', photoObjectUrl),
+      setImage('#fullPhoto', photoObjectUrl)
     ]);
 
     $('#loading').hidden = true;
@@ -33,12 +34,25 @@ async function init() {
   }
 }
 
+async function fetchPhoto(url) {
+  const res = await fetch(url, { cache: 'no-store' });
+  if (!res.ok) throw new Error('photo not found');
+  const blob = await res.blob();
+  if (!blob.type.startsWith('image/')) throw new Error('invalid photo');
+  return URL.createObjectURL(blob);
+}
+
 function setImage(selector, src) {
   return new Promise((resolve, reject) => {
     const img = $(selector);
-    img.onload = resolve;
+    const done = () => {
+      img.classList.add('is-loaded');
+      resolve();
+    };
+    img.onload = done;
     img.onerror = reject;
     img.src = src;
+    if (img.complete && img.naturalWidth > 0) done();
   });
 }
 
@@ -51,14 +65,17 @@ function openInvitation() {
   setTimeout(() => $('#envelope').classList.add('complete'), 780);
   modalTimer = setTimeout(showModal, 1550);
 }
+
 function showModal() {
+  clearTimeout(modalTimer);
   $('#fullModal').hidden = false;
-  document.body.style.overflow = 'hidden';
+  document.body.classList.add('modal-open');
 }
+
 function closeModal() {
   clearTimeout(modalTimer);
   $('#fullModal').hidden = true;
-  document.body.style.overflow = '';
+  document.body.classList.remove('modal-open');
 }
 
 $('#envelope').addEventListener('click', openInvitation);
@@ -66,5 +83,6 @@ $('#openBtn').addEventListener('click', openInvitation);
 $('#modalClose').addEventListener('click', closeModal);
 $('#fullModal').addEventListener('click', e => { if (e.target === $('#fullModal')) closeModal(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#fullModal').hidden) closeModal(); });
+window.addEventListener('pagehide', () => { if (photoObjectUrl) URL.revokeObjectURL(photoObjectUrl); });
 
 init();

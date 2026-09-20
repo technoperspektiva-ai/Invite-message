@@ -13,18 +13,33 @@ $('#photoInput').addEventListener('change', async (event) => {
   const file = event.target.files?.[0];
   if (!file) return;
   if (!file.type.startsWith('image/')) return toast('Оберіть зображення');
+
+  setBusyPhoto(true);
   try {
     imageData = await compressImage(file);
-    $('#photoThumb').src = imageData;
-    $('#photoThumb').hidden = false;
+    const thumb = $('#photoThumb');
+    thumb.src = imageData;
+    thumb.hidden = false;
     $('#previewPhoto').src = imageData;
+    $('.photo-drop').classList.add('has-photo');
     $('#previewBtn').disabled = false;
     $('#createBtn').disabled = false;
   } catch (e) {
     console.error(e);
     toast('Не вдалося обробити фото');
+  } finally {
+    setBusyPhoto(false);
   }
 });
+
+function setBusyPhoto(state) {
+  $('.photo-drop').classList.toggle('is-busy', state);
+}
+
+function estimatedBytes(dataUrl) {
+  const comma = dataUrl.indexOf(',');
+  return Math.ceil((dataUrl.length - comma - 1) * 0.75);
+}
 
 function compressImage(file) {
   return new Promise((resolve, reject) => {
@@ -34,15 +49,31 @@ function compressImage(file) {
       const img = new Image();
       img.onerror = reject;
       img.onload = () => {
-        const maxSide = 720;
-        const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
-        const w = Math.max(1, Math.round(img.width * scale));
-        const h = Math.max(1, Math.round(img.height * scale));
-        const canvas = document.createElement('canvas');
-        canvas.width = w; canvas.height = h;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL('image/jpeg', 0.78));
+        try {
+          let maxSide = 720;
+          let scale = Math.min(1, maxSide / Math.max(img.naturalWidth || img.width, img.naturalHeight || img.height));
+          let w = Math.max(1, Math.round((img.naturalWidth || img.width) * scale));
+          let h = Math.max(1, Math.round((img.naturalHeight || img.height) * scale));
+          let quality = 0.82;
+          let result = '';
+
+          for (let pass = 0; pass < 8; pass++) {
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d', { alpha: false });
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, w, h);
+            ctx.drawImage(img, 0, 0, w, h);
+            result = canvas.toDataURL('image/jpeg', quality);
+            if (estimatedBytes(result) <= 420_000) break;
+            if (quality > 0.58) quality -= 0.08;
+            else { w = Math.max(320, Math.round(w * 0.86)); h = Math.max(320, Math.round(h * 0.86)); }
+          }
+
+          if (!result || estimatedBytes(result) > 470_000) throw new Error('image too large');
+          resolve(result);
+        } catch (error) { reject(error); }
       };
       img.src = reader.result;
     };
@@ -62,6 +93,12 @@ $('#previewDialog').addEventListener('click', e => { if (e.target === $('#previe
 
 $('#linkClose').addEventListener('click', () => closeDialog($('#linkDialog')));
 $('#linkDialog').addEventListener('click', e => { if (e.target === $('#linkDialog')) closeDialog($('#linkDialog')); });
+
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  closeDialog($('#previewDialog'));
+  closeDialog($('#linkDialog'));
+});
 
 $('#createBtn').addEventListener('click', async () => {
   if (!imageData) return;
@@ -105,8 +142,8 @@ $('#shareLink').addEventListener('click', async () => {
 
 function toast(message) {
   const el = document.createElement('div');
-  el.className = 'toast'; el.textContent = message;
+  el.className = 'toast';
+  el.textContent = message;
   document.body.appendChild(el);
   setTimeout(() => el.remove(), 2200);
 }
-

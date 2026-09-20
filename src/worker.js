@@ -1,4 +1,5 @@
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" };
+const PHOTO_CHUNK_SIZE = 60_000;
 
 export class InvitationStore {
   constructor(ctx, env) {
@@ -11,15 +12,26 @@ export class InvitationStore {
 
     if (request.method === "POST" && url.pathname === "/store") {
       const data = await request.json();
-      await this.ctx.storage.put("invite", data);
-      return new Response("ok");
-    }
+      const image = String(data.image || "");
+      const parsed = parseDataImage(image);
+      if (!parsed) return new Response("bad image", { status: 400 });
 
-    if (request.method === "PUT" && url.pathname === "/photo") {
-      const buffer = await request.arrayBuffer();
-      const type = request.headers.get("content-type") || "image/jpeg";
-      await this.ctx.storage.put("photo", buffer);
-      await this.ctx.storage.put("photoType", type);
+      const meta = {
+        recipient: data.recipient,
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt
+      };
+
+      const base64 = parsed.base64;
+      const count = Math.ceil(base64.length / PHOTO_CHUNK_SIZE);
+      const values = {
+        invite: meta,
+        photoManifest: { type: parsed.type, count, version: 2 }
+      };
+      for (let i = 0; i < count; i++) {
+        values[`photo:${String(i).padStart(3, "0")}`] = base64.slice(i * PHOTO_CHUNK_SIZE, (i + 1) * PHOTO_CHUNK_SIZE);
+      }
+      await this.ctx.storage.put(values);
       return new Response("ok");
     }
 
@@ -31,29 +43,32 @@ export class InvitationStore {
     }
 
     if (request.method === "GET" && url.pathname === "/photo") {
-      let buffer = await this.ctx.storage.get("photo");
-      let type = await this.ctx.storage.get("photoType") || "image/jpeg";
-
-      // Backward compatibility for invitations created by v4, where the
-      // compressed image was stored inside the invitation JSON.
-      if (!buffer) {
-        const legacy = await this.ctx.storage.get("invite");
-        const parsed = legacy?.image ? parseDataImage(String(legacy.image)) : null;
-        if (parsed) {
-          buffer = parsed.bytes.buffer;
-          type = parsed.type;
-          await this.ctx.storage.put("photo", buffer);
-          await this.ctx.storage.put("photoType", type);
+      // v6: photo is stored as small base64 chunks so it works reliably
+      // with Durable Object storage and does not require R2.
+      const manifest = await this.ctx.storage.get("photoManifest");
+      if (manifest?.count) {
+        const keys = Array.from({ length: manifest.count }, (_, i) => `photo:${String(i).padStart(3, "0")}`);
+        const chunks = await this.ctx.storage.get(keys);
+        const base64 = keys.map(key => chunks.get(key) || "").join("");
+        if (base64) {
+          const bytes = base64ToBytes(base64);
+          return imageResponse(bytes, manifest.type || "image/jpeg");
         }
       }
 
-      if (!buffer) return new Response("not found", { status: 404 });
-      return new Response(buffer, {
-        headers: {
-          "content-type": type,
-          "cache-control": "public, max-age=31536000, immutable"
-        }
-      });
+      // Compatibility with v5 binary storage.
+      const binary = await this.ctx.storage.get("photo");
+      if (binary) {
+        const type = await this.ctx.storage.get("photoType") || "image/jpeg";
+        return imageResponse(binary, type);
+      }
+
+      // Compatibility with v4, where the Data URL lived in the invite object.
+      const legacy = await this.ctx.storage.get("invite");
+      const parsed = legacy?.image ? parseDataImage(String(legacy.image)) : null;
+      if (parsed) return imageResponse(parsed.bytes, parsed.type);
+
+      return new Response("not found", { status: 404 });
     }
 
     return new Response("not found", { status: 404 });
@@ -74,10 +89,25 @@ function shortId() {
 function parseDataImage(value) {
   const match = /^data:(image\/(?:jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(value);
   if (!match) return null;
-  const binary = atob(match[2]);
+  const bytes = base64ToBytes(match[2]);
+  return { type: match[1], base64: match[2], bytes };
+}
+
+function base64ToBytes(base64) {
+  const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return { type: match[1], bytes };
+  return bytes;
+}
+
+function imageResponse(body, type) {
+  return new Response(body, {
+    headers: {
+      "content-type": type,
+      "cache-control": "no-store",
+      "x-content-type-options": "nosniff"
+    }
+  });
 }
 
 function inviteStub(env, id) {
@@ -85,21 +115,13 @@ function inviteStub(env, id) {
   return env.INVITES.get(objId);
 }
 
-async function storeInvite(env, id, payload, photo) {
-  const stub = inviteStub(env, id);
-  const metaRes = await stub.fetch("https://invite.internal/store", {
+async function storeInvite(env, id, payload, image) {
+  const res = await inviteStub(env, id).fetch("https://invite.internal/store", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(payload)
+    body: JSON.stringify({ ...payload, image })
   });
-  if (!metaRes.ok) throw new Error("metadata store failed");
-
-  const photoRes = await stub.fetch("https://invite.internal/photo", {
-    method: "PUT",
-    headers: { "content-type": photo.type },
-    body: photo.bytes
-  });
-  if (!photoRes.ok) throw new Error("photo store failed");
+  if (!res.ok) throw new Error("invite store failed");
 }
 
 async function getInvite(env, id) {
@@ -125,11 +147,11 @@ export default {
 
         const photo = parseDataImage(image);
         if (!photo) return json({ error: "Додай фото" }, 400);
-        if (photo.bytes.byteLength > 700_000) return json({ error: "Фото завелике після обробки" }, 413);
+        if (photo.bytes.byteLength > 480_000) return json({ error: "Фото завелике після обробки" }, 413);
 
         const id = shortId();
         const now = Date.now();
-        await storeInvite(env, id, { recipient, createdAt: now, updatedAt: now }, photo);
+        await storeInvite(env, id, { recipient, createdAt: now, updatedAt: now }, image);
         return json({ id, url: `${url.origin}/i/${id}` }, 201);
       } catch (error) {
         console.error(error);
@@ -137,18 +159,18 @@ export default {
       }
     }
 
-    const apiMatch = url.pathname.match(/^\/api\/invitations\/([a-z0-9]+)$/i);
-    if (request.method === "GET" && apiMatch) {
-      const data = await getInvite(env, apiMatch[1]);
-      if (!data) return json({ error: "Запрошення не знайдено" }, 404);
-      return json(data);
-    }
-
     const photoMatch = url.pathname.match(/^\/api\/invitations\/([a-z0-9]+)\/photo$/i);
     if (request.method === "GET" && photoMatch) {
       const res = await getPhoto(env, photoMatch[1]);
       if (!res.ok) return new Response("Фото не знайдено", { status: 404 });
       return res;
+    }
+
+    const apiMatch = url.pathname.match(/^\/api\/invitations\/([a-z0-9]+)$/i);
+    if (request.method === "GET" && apiMatch) {
+      const data = await getInvite(env, apiMatch[1]);
+      if (!data) return json({ error: "Запрошення не знайдено" }, 404);
+      return json(data);
     }
 
     if (request.method === "GET" && /^\/i\/[a-z0-9]+$/i.test(url.pathname)) {
