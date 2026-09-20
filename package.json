@@ -1,13 +1,11 @@
 {
-  "name": "love-invite-studio",
+  "name": "invite-message",
   "private": true,
   "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "db:migrate:local": "wrangler d1 migrations apply love-invite-db --local",
-    "db:migrate:remote": "wrangler d1 migrations apply love-invite-db --remote"
+    "deploy": "wrangler deploy"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"

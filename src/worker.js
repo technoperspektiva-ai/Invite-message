@@ -20,6 +20,10 @@ function allowedImage(file) {
     ["image/jpeg", "image/png", "image/webp", "image/avif"].includes(file.type);
 }
 
+function inviteDataKey(id) {
+  return `invites/${id}/data.json`;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -38,41 +42,37 @@ export default {
           const ext = (photo.type.split("/")[1] || "jpg").replace("jpeg", "jpg");
           photoKey = `invites/${id}/photo.${ext}`;
           await env.MEDIA.put(photoKey, photo.stream(), {
-            httpMetadata: { contentType: photo.type, cacheControl: "public, max-age=31536000, immutable" },
+            httpMetadata: {
+              contentType: photo.type,
+              cacheControl: "public, max-age=31536000, immutable",
+            },
           });
         }
 
         const record = {
           id,
-          created_at: new Date().toISOString(),
-          expires_at: null,
-          recipient_type: safeText(form.get("recipientType"), 40) || "Кохана",
-          recipient_name: safeText(form.get("recipientName"), 80),
+          createdAt: new Date().toISOString(),
+          expiresAt: null,
+          recipientType: safeText(form.get("recipientType"), 40) || "Кохана",
+          recipientName: safeText(form.get("recipientName"), 80),
           headline: safeText(form.get("headline"), 120) || "Запрошення для коханої людини",
           subtitle: safeText(form.get("subtitle"), 180),
-          date_text: safeText(form.get("date"), 40),
-          time_text: safeText(form.get("time"), 40),
-          location_text: safeText(form.get("location"), 120),
-          dress_code: safeText(form.get("dressCode"), 120),
-          note_text: safeText(form.get("note"), 500),
-          photo_key: photoKey,
+          date: safeText(form.get("date"), 40),
+          time: safeText(form.get("time"), 40),
+          location: safeText(form.get("location"), 120),
+          dressCode: safeText(form.get("dressCode"), 120),
+          note: safeText(form.get("note"), 500),
+          photoKey,
         };
 
-        await env.DB.prepare(`
-          INSERT INTO invitations (
-            id, created_at, expires_at, recipient_type, recipient_name, headline, subtitle,
-            date_text, time_text, location_text, dress_code, note_text, photo_key
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).bind(
-          record.id, record.created_at, record.expires_at, record.recipient_type, record.recipient_name,
-          record.headline, record.subtitle, record.date_text, record.time_text,
-          record.location_text, record.dress_code, record.note_text, record.photo_key
-        ).run();
+        await env.MEDIA.put(inviteDataKey(id), JSON.stringify(record), {
+          httpMetadata: {
+            contentType: "application/json; charset=utf-8",
+            cacheControl: "no-store",
+          },
+        });
 
-        return json({
-          id,
-          url: `${url.origin}/i/${id}`,
-        }, { status: 201 });
+        return json({ id, url: `${url.origin}/i/${id}` }, { status: 201 });
       } catch (error) {
         console.error(error);
         return json({ error: "Не вдалося створити запрошення." }, { status: 500 });
@@ -80,22 +80,29 @@ export default {
     }
 
     if (url.pathname.startsWith("/api/invitations/") && request.method === "GET") {
-      const id = url.pathname.split("/").pop();
-      const row = await env.DB.prepare("SELECT * FROM invitations WHERE id = ?").bind(id).first();
-      if (!row) return json({ error: "Запрошення не знайдено." }, { status: 404 });
-      return json({
-        id: row.id,
-        recipientType: row.recipient_type,
-        recipientName: row.recipient_name,
-        headline: row.headline,
-        subtitle: row.subtitle,
-        date: row.date_text,
-        time: row.time_text,
-        location: row.location_text,
-        dressCode: row.dress_code,
-        note: row.note_text,
-        photoUrl: row.photo_key ? `/media/${encodeURIComponent(row.photo_key)}` : "",
-      });
+      const id = safeText(url.pathname.split("/").pop(), 64);
+      const object = await env.MEDIA.get(inviteDataKey(id));
+      if (!object) return json({ error: "Запрошення не знайдено." }, { status: 404 });
+
+      try {
+        const record = JSON.parse(await object.text());
+        return json({
+          id: record.id,
+          recipientType: record.recipientType,
+          recipientName: record.recipientName,
+          headline: record.headline,
+          subtitle: record.subtitle,
+          date: record.date,
+          time: record.time,
+          location: record.location,
+          dressCode: record.dressCode,
+          note: record.note,
+          photoUrl: record.photoKey ? `/media/${encodeURIComponent(record.photoKey)}` : "",
+        });
+      } catch (error) {
+        console.error(error);
+        return json({ error: "Дані запрошення пошкоджено." }, { status: 500 });
+      }
     }
 
     if (url.pathname.startsWith("/media/") && request.method === "GET") {
