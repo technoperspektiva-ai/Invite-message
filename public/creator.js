@@ -3,26 +3,10 @@ const $$ = (s) => [...document.querySelectorAll(s)];
 let recipient = 'Дружина';
 let imageData = '';
 
-const copy = {
-  'Дружина': ['Для дружини', 'Ти особлива. Я хочу розділити цей момент з тобою.'],
-  'Кохана': ['Для коханої', 'Ти особлива. Я хочу розділити цей момент з тобою.'],
-  'Подруга': ['Для подруги', 'Ти особлива. Нехай цей момент залишиться нашою маленькою історією.'],
-  'Чоловік': ['Для чоловіка', 'Ти особливий. Я хочу розділити цей момент з тобою.'],
-  'Коханий': ['Для коханого', 'Ти особливий. Я хочу розділити цей момент з тобою.'],
-  'Друг': ['Для друга', 'Ти особливий. Нехай цей момент залишиться нашою маленькою історією.']
-};
-
-function updatePreview() {
-  const [title, text] = copy[recipient];
-  $('#previewTitle').textContent = title;
-  $('#previewText').textContent = text;
-}
-
 $$('[data-value]').forEach(btn => btn.addEventListener('click', () => {
   $$('[data-value]').forEach(x => x.classList.remove('active'));
   btn.classList.add('active');
   recipient = btn.dataset.value;
-  updatePreview();
 }));
 
 $('#photoInput').addEventListener('change', async (event) => {
@@ -71,7 +55,6 @@ function closeDialog(dialog) { if (dialog.open) dialog.close(); }
 
 $('#previewBtn').addEventListener('click', () => {
   if (!imageData) return;
-  updatePreview();
   openDialog($('#previewDialog'));
 });
 $('#previewClose').addEventListener('click', () => closeDialog($('#previewDialog')));
@@ -127,4 +110,3 @@ function toast(message) {
   setTimeout(() => el.remove(), 2200);
 }
 
-updatePreview();
