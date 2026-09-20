@@ -3,6 +3,7 @@ const $$ = (s) => [...document.querySelectorAll(s)];
 
 let recipient = 'Дружина';
 let preparedBlob = null;
+let preparedDataUri = '';
 let previewUrl = '';
 
 $$('[data-value]').forEach(btn => btn.addEventListener('click', () => {
@@ -17,6 +18,9 @@ $('#photoInput').addEventListener('change', async (event) => {
   setBusy(true);
   try {
     preparedBlob = await normalizePhoto(file);
+    preparedDataUri = await blobToDataUri(preparedBlob);
+    if (preparedDataUri.length > 900_000) throw new Error('prepared image too large');
+
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     previewUrl = URL.createObjectURL(preparedBlob);
 
@@ -31,6 +35,7 @@ $('#photoInput').addEventListener('change', async (event) => {
   } catch (error) {
     console.error(error);
     preparedBlob = null;
+    preparedDataUri = '';
     toast('Не вдалося підготувати фото. Спробуй інше.');
   } finally {
     setBusy(false);
@@ -42,17 +47,17 @@ async function normalizePhoto(file) {
   if (file.size > 30 * 1024 * 1024) throw new Error('source too large');
 
   const source = await decodeSource(file);
-  let width = source.width;
-  let height = source.height;
+  const width = source.width;
+  const height = source.height;
   if (!width || !height) throw new Error('image dimensions unavailable');
 
-  let maxSide = 1200;
+  let maxSide = 1280;
   let quality = 0.84;
   let blob = null;
 
-  // We target <= 850 KiB so the complete invitation record stays safely under
-  // Durable Objects' 2 MiB per-value limit even after base64 encoding.
-  for (let attempt = 0; attempt < 10; attempt++) {
+  // D1 stores the final JPEG as base64 TEXT. Keep the JPEG <= 560 KiB so
+  // the complete row stays comfortably below D1's 2 MB row limit.
+  for (let attempt = 0; attempt < 12; attempt++) {
     const scale = Math.min(1, maxSide / Math.max(width, height));
     const outW = Math.max(1, Math.round(width * scale));
     const outH = Math.max(1, Math.round(height * scale));
@@ -65,13 +70,13 @@ async function normalizePhoto(file) {
     ctx.fillRect(0, 0, outW, outH);
     ctx.drawImage(source.drawable, 0, 0, outW, outH);
     blob = await canvasToBlob(canvas, quality);
-    if (blob.size <= 850 * 1024) break;
-    if (quality > 0.62) quality -= 0.07;
-    else maxSide = Math.round(maxSide * 0.82);
+    if (blob.size <= 560 * 1024) break;
+    if (quality > 0.58) quality -= 0.07;
+    else maxSide = Math.max(720, Math.round(maxSide * 0.82));
   }
 
   source.cleanup?.();
-  if (!blob?.size || blob.size > 900 * 1024) throw new Error('normalized image too large');
+  if (!blob?.size || blob.size > 600 * 1024) throw new Error('normalized image too large');
   return blob;
 }
 
@@ -103,6 +108,15 @@ function canvasToBlob(canvas, quality) {
   });
 }
 
+function blobToDataUri(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('base64 conversion failed'));
+    reader.readAsDataURL(blob);
+  });
+}
+
 function setBusy(value) {
   $('#photoBusy').hidden = !value;
   $('#photoInput').disabled = value;
@@ -124,33 +138,30 @@ document.addEventListener('keydown', e => {
 });
 
 $('#createBtn').addEventListener('click', async () => {
-  if (!preparedBlob) return;
+  if (!preparedDataUri) return;
   const btn = $('#createBtn');
   btn.disabled = true;
   const label = btn.querySelector('span');
   const old = label.textContent;
-  label.textContent = 'Перевіряємо…';
+  label.textContent = 'Створюємо…';
 
   try {
-    const form = new FormData();
-    form.append('recipient', recipient);
-    form.append('photo', preparedBlob, 'invitation-photo.jpg');
-
-    const res = await fetch('/api/invitations', { method: 'POST', body: form, cache: 'no-store' });
+    const res = await fetch('/api/invitations', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ recipient, image: preparedDataUri }),
+      cache: 'no-store'
+    });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || `Помилка ${res.status}`);
-
-    // Verify both metadata and the actual image through the same public URLs the recipient will use.
-    const id = data.id;
-    const check = await fetch(`/api/invitations/${encodeURIComponent(id)}?t=${Date.now()}`, { cache: 'no-store' });
-    const payload = await check.json().catch(() => ({}));
-    if (!check.ok || !payload.photoUrl || !payload.recipient) {
-      throw new Error('Запрошення не пройшло перевірку. Спробуй ще раз.');
+    if (!res.ok) {
+      const extra = data.stage ? ` (${data.stage})` : '';
+      throw new Error(`${data.error || `Помилка ${res.status}`}${extra}`);
     }
-    const photoCheck = await fetch(`${payload.photoUrl}?t=${Date.now()}`, { cache: 'no-store' });
-    const photoBlob = await photoCheck.blob().catch(() => null);
-    if (!photoCheck.ok || !photoBlob?.size || !String(photoBlob.type).startsWith('image/')) {
-      throw new Error('Фото не пройшло перевірку. Спробуй ще раз.');
+
+    const check = await fetch(`/api/invitations/${encodeURIComponent(data.id)}?t=${Date.now()}`, { cache: 'no-store' });
+    const payload = await check.json().catch(() => ({}));
+    if (!check.ok || !payload.image || !payload.recipient) {
+      throw new Error(payload.error || 'Запрошення не пройшло перевірку');
     }
 
     $('#inviteLink').value = data.url;
@@ -185,5 +196,5 @@ function toast(message) {
   el.className = 'toast';
   el.textContent = message;
   $('#toastHost').appendChild(el);
-  setTimeout(() => el.remove(), 3200);
+  setTimeout(() => el.remove(), 4200);
 }

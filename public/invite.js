@@ -10,7 +10,6 @@ const titles = {
 
 let opened = false;
 let modalTimer = 0;
-let photoObjectUrl = '';
 
 async function init() {
   const id = location.pathname.split('/').filter(Boolean).pop();
@@ -18,18 +17,12 @@ async function init() {
     const res = await fetch(`/api/invitations/${encodeURIComponent(id)}?t=${Date.now()}`, { cache: 'no-store' });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'Запрошення не знайдено');
-    if (!data.photoUrl) throw new Error('Фото в запрошенні відсутнє');
+    if (!/^data:image\/jpeg;base64,/.test(String(data.image || ''))) throw new Error('Фото в запрошенні відсутнє');
 
-    const photoRes = await fetch(`${data.photoUrl}?t=${Date.now()}`, { cache: 'no-store' });
-    if (!photoRes.ok) throw new Error('Фото запрошення не завантажилося');
-    const blob = await photoRes.blob();
-    if (!blob.size || !String(blob.type).startsWith('image/')) throw new Error('Фото запрошення пошкоджене');
-
-    photoObjectUrl = URL.createObjectURL(blob);
     $('#heroTitle').textContent = titles[data.recipient] || 'Для тебе';
     await Promise.all([
-      assignImage($('#letterPhoto'), photoObjectUrl),
-      assignImage($('#fullPhoto'), photoObjectUrl)
+      assignImage($('#letterPhoto'), data.image),
+      assignImage($('#fullPhoto'), data.image)
     ]);
 
     $('#loading').hidden = true;
@@ -86,6 +79,5 @@ $('#openBtn').addEventListener('click', openInvitation);
 $('#modalClose').addEventListener('click', closeModal);
 $('#fullModal').addEventListener('click', e => { if (e.target === $('#fullModal')) closeModal(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#fullModal').hidden) closeModal(); });
-window.addEventListener('pagehide', () => { if (photoObjectUrl) URL.revokeObjectURL(photoObjectUrl); });
 
 init();

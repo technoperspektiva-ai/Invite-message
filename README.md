@@ -1,10 +1,11 @@
-# Invite Message v11 — D1 rebuild
+# Invite Message v12 — reliable D1 text storage
 
-This build removes Durable Objects from runtime and stores invitations/photos in Cloudflare D1.
+This build keeps D1, but removes the two fragile parts from v11:
 
-## Why v11
+1. no global cached D1 I/O promise;
+2. no BLOB / Uint8Array / multipart pipeline.
 
-Previous builds used one Durable Object per invitation. v11 replaces that path entirely with one D1 table and a dedicated raw-JPEG endpoint. The creator verifies both metadata and the actual JPEG before exposing a share link.
+The browser converts the chosen photo to a compact JPEG, then to a base64 data URI. D1 stores that value as normal TEXT in the same row as the invitation metadata. One public API read returns the complete invitation, so the recipient page does not depend on a second photo request.
 
 ## Deploy
 
@@ -12,17 +13,14 @@ Previous builds used one Durable Object per invitation. v11 replaces that path e
 npx wrangler deploy
 ```
 
-Wrangler 4.45+ automatically provisions the D1 binding declared in `wrangler.toml`; no account-specific `database_id` is committed to the repository.
+No R2 is used. No manual database_id is required with current Wrangler automatic provisioning.
 
-The config also includes the required `v2` legacy Durable Object deletion migration because earlier releases had already created `InvitationStore` in migration `v1`.
+## Diagnostic endpoint
 
-## Routes
+Open `/api/health` after deploy. A healthy deployment returns:
 
-- `/` — creator
-- `POST /api/invitations` — create invitation
-- `GET /api/invitations/:id` — metadata
-- `GET /api/invitations/:id/photo` — raw JPEG photo
-- `/i/:id` — recipient invitation page
-- `/api/health` — D1 health check
+```json
+{"ok":true,"storage":"d1-text","version":12}
+```
 
-The Worker creates the `invitations` table automatically on first request.
+If creation fails, the UI now includes the failing stage (`schema`, `json`, `insert`, or `verify`) instead of hiding the useful signal.

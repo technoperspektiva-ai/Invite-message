@@ -4,58 +4,43 @@ const JSON_HEADERS = {
 };
 
 const RECIPIENTS = new Set(["Дружина", "Кохана", "Подруга", "Чоловік", "Коханий", "Друг"]);
-const MAX_JPEG_BYTES = 900 * 1024;
-let schemaPromise = null;
+const MAX_DATA_URI_CHARS = 950_000;
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: JSON_HEADERS });
 }
 
 function shortId() {
-  const bytes = crypto.getRandomValues(new Uint8Array(10));
-  return Array.from(bytes, b => b.toString(36).padStart(2, "0")).join("").slice(0, 16);
+  const bytes = crypto.getRandomValues(new Uint8Array(12));
+  return Array.from(bytes, b => b.toString(36).padStart(2, "0")).join("").slice(0, 18);
 }
 
 async function ensureSchema(env) {
-  if (!schemaPromise) {
-    schemaPromise = env.DB.exec(`
-      CREATE TABLE IF NOT EXISTS invitations (
-        id TEXT PRIMARY KEY,
-        recipient TEXT NOT NULL,
-        photo BLOB NOT NULL,
-        created_at INTEGER NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS idx_invitations_created_at ON invitations(created_at);
-    `).catch(error => {
-      schemaPromise = null;
-      throw error;
-    });
-  }
-  return schemaPromise;
+  // Do not cache D1 promises globally. Workers may reuse an isolate for many
+  // requests, while I/O objects belong to the request that created them.
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS invitations (
+      id TEXT PRIMARY KEY,
+      recipient TEXT NOT NULL,
+      photo_data TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    )
+  `).run();
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS idx_invitations_created_at ON invitations(created_at)"
+  ).run();
 }
 
-function toBytes(value) {
-  if (!value) return null;
-  if (value instanceof Uint8Array) return value;
-  if (value instanceof ArrayBuffer) return new Uint8Array(value);
-  if (ArrayBuffer.isView(value)) return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
-  if (Array.isArray(value)) return Uint8Array.from(value);
-  return null;
-}
-
-async function getMeta(env, id) {
+async function getInvite(env, id, includePhoto = true) {
   await ensureSchema(env);
-  return env.DB.prepare(
-    "SELECT id, recipient, created_at, length(photo) AS photo_bytes FROM invitations WHERE id = ? LIMIT 1"
-  ).bind(id).first();
+  const sql = includePhoto
+    ? "SELECT id, recipient, photo_data, created_at FROM invitations WHERE id = ?1 LIMIT 1"
+    : "SELECT id, recipient, created_at, length(photo_data) AS photo_chars FROM invitations WHERE id = ?1 LIMIT 1";
+  return env.DB.prepare(sql).bind(id).first();
 }
 
-async function getPhoto(env, id) {
-  await ensureSchema(env);
-  const row = await env.DB.prepare(
-    "SELECT photo FROM invitations WHERE id = ? LIMIT 1"
-  ).bind(id).first();
-  return toBytes(row?.photo);
+function validImageDataUri(value) {
+  return typeof value === "string" && /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(value);
 }
 
 export default {
@@ -66,95 +51,72 @@ export default {
       try {
         await ensureSchema(env);
         const row = await env.DB.prepare("SELECT 1 AS ok").first();
-        return json({ ok: row?.ok === 1, storage: "d1" });
+        return json({ ok: row?.ok === 1, storage: "d1-text", version: 12 });
       } catch (error) {
         console.error("health failed", error);
-        return json({ ok: false, storage: "d1", error: "database unavailable" }, 500);
+        return json({ ok: false, storage: "d1-text", version: 12, error: String(error?.message || error) }, 500);
       }
     }
 
     if (request.method === "POST" && url.pathname === "/api/invitations") {
+      let stage = "request";
       try {
+        stage = "schema";
         await ensureSchema(env);
-        const contentType = request.headers.get("content-type") || "";
-        if (!contentType.includes("multipart/form-data")) {
-          return json({ error: "Очікується фото" }, 415);
-        }
 
-        const form = await request.formData();
-        const recipient = String(form.get("recipient") || "");
-        const file = form.get("photo");
+        stage = "json";
+        const body = await request.json();
+        const recipient = String(body?.recipient || "");
+        const image = String(body?.image || "");
 
         if (!RECIPIENTS.has(recipient)) return json({ error: "Некоректне звертання" }, 400);
-        if (!file || typeof file.arrayBuffer !== "function") return json({ error: "Додай фото" }, 400);
-        if (String(file.type || "").toLowerCase() !== "image/jpeg") {
-          return json({ error: "Фото не було підготовлене як JPEG" }, 415);
-        }
-        if (!file.size || file.size > MAX_JPEG_BYTES) {
-          return json({ error: "Підготовлене фото завелике" }, 413);
-        }
-
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        if (bytes.byteLength < 32) return json({ error: "Фото пошкоджене" }, 400);
+        if (!validImageDataUri(image)) return json({ error: "Додай фото" }, 400);
+        if (image.length > MAX_DATA_URI_CHARS) return json({ error: "Фото завелике після обробки" }, 413);
 
         const id = shortId();
         const createdAt = Date.now();
-        await env.DB.prepare(
-          "INSERT INTO invitations (id, recipient, photo, created_at) VALUES (?, ?, ?, ?)"
-        ).bind(id, recipient, bytes, createdAt).run();
 
-        // Strong consistency check against the exact row before a public link is returned.
-        const verify = await getMeta(env, id);
-        if (!verify || Number(verify.photo_bytes) !== bytes.byteLength || verify.recipient !== recipient) {
+        stage = "insert";
+        const result = await env.DB.prepare(
+          "INSERT INTO invitations (id, recipient, photo_data, created_at) VALUES (?1, ?2, ?3, ?4)"
+        ).bind(id, recipient, image, createdAt).run();
+        if (result?.success === false) throw new Error("D1 insert returned success=false");
+
+        stage = "verify";
+        const verify = await getInvite(env, id, false);
+        if (!verify || verify.recipient !== recipient || Number(verify.photo_chars || 0) !== image.length) {
           throw new Error("D1 verification mismatch");
         }
 
+        return json({ id, url: `${url.origin}/i/${id}` }, 201);
+      } catch (error) {
+        console.error("create invitation failed", { stage, error });
         return json({
-          id,
-          url: `${url.origin}/i/${id}`,
-          photoUrl: `${url.origin}/api/invitations/${id}/photo`
-        }, 201);
-      } catch (error) {
-        console.error("create invitation failed", error);
-        return json({ error: "Не вдалося надійно зберегти запрошення. Спробуй ще раз." }, 500);
+          error: "Не вдалося зберегти запрошення.",
+          code: "CREATE_FAILED",
+          stage,
+          detail: String(error?.message || error)
+        }, 500);
       }
     }
 
-    const photoMatch = url.pathname.match(/^\/api\/invitations\/([a-z0-9]+)\/photo$/i);
-    if (request.method === "GET" && photoMatch) {
+    const apiMatch = url.pathname.match(/^\/api\/invitations\/([a-z0-9]+)$/i);
+    if (request.method === "GET" && apiMatch) {
       try {
-        const bytes = await getPhoto(env, photoMatch[1]);
-        if (!bytes?.byteLength) return new Response("not found", { status: 404 });
-        return new Response(bytes, {
-          status: 200,
-          headers: {
-            "content-type": "image/jpeg",
-            "content-length": String(bytes.byteLength),
-            "cache-control": "public, max-age=31536000, immutable",
-            "x-content-type-options": "nosniff"
-          }
-        });
-      } catch (error) {
-        console.error("photo read failed", error);
-        return new Response("photo unavailable", { status: 500 });
-      }
-    }
-
-    const metaMatch = url.pathname.match(/^\/api\/invitations\/([a-z0-9]+)$/i);
-    if (request.method === "GET" && metaMatch) {
-      try {
-        const row = await getMeta(env, metaMatch[1]);
+        const row = await getInvite(env, apiMatch[1], true);
         if (!row) return json({ error: "Запрошення не знайдено" }, 404);
+        if (!validImageDataUri(row.photo_data)) {
+          return json({ error: "Фото запрошення пошкоджене" }, 500);
+        }
         return json({
           id: row.id,
           recipient: row.recipient,
           createdAt: row.created_at,
-          photoBytes: Number(row.photo_bytes || 0),
-          photoUrl: `/api/invitations/${row.id}/photo`
+          image: row.photo_data
         });
       } catch (error) {
-        console.error("meta read failed", error);
-        return json({ error: "Запрошення тимчасово недоступне" }, 500);
+        console.error("invite read failed", error);
+        return json({ error: "Запрошення тимчасово недоступне", detail: String(error?.message || error) }, 500);
       }
     }
 
